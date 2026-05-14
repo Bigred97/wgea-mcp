@@ -4,12 +4,11 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
-from wgea_mcp import curated, parsing, shaping
+from wgea_mcp import curated, parsing
 from wgea_mcp.shaping import (
     build_response,
     fuzzy_match_employer,
     records_to_csv,
-    records_to_series,
 )
 
 
@@ -296,3 +295,49 @@ def test_period_filter_year_only(workforce_df):
     )
     # Should still match (the expand logic handles "2024" → "2023-24" start, "2024-25" end)
     assert resp.row_count >= 0
+
+
+def test_data_response_period_populated_alongside_reporting_year(workforce_df):
+    """Wave-2 interop: canonical period dict is populated when reporting_year is."""
+    cd = curated.get("WORKFORCE_COMPOSITION")
+    resp = build_response(
+        cd=cd, df=workforce_df,
+        filters={"employer_name": "Commonwealth Bank"},
+        measures=None, start_period=None, end_period=None,
+        fmt="records", user_query={},
+    )
+    # Single-year fixture: reporting_year and period["start"]/period["end"] match.
+    assert resp.reporting_year is not None
+    assert resp.period["start"] == resp.reporting_year
+    assert resp.period["end"] == resp.reporting_year
+
+
+def test_data_response_period_brackets_multi_year_records(workforce_df):
+    """When records span multiple reporting years, period brackets the range."""
+    cd = curated.get("WORKFORCE_COMPOSITION")
+    resp = build_response(
+        cd=cd, df=workforce_df,
+        filters={},  # no employer filter → may span multiple years
+        measures=None, start_period=None, end_period=None,
+        fmt="records", user_query={},
+    )
+    if resp.row_count > 0:
+        years = sorted({r.reporting_year for r in resp.records if r.reporting_year})
+        if years:
+            assert resp.period["start"] == years[0]
+            assert resp.period["end"] == years[-1]
+            # The legacy reporting_year is preserved (it's the latest, not the earliest).
+            assert resp.reporting_year == years[-1]
+
+
+def test_data_response_period_empty_when_no_records():
+    """No records → period dict has None bounds (matches reporting_year=None)."""
+    cd = curated.get("WORKFORCE_COMPOSITION")
+    resp = build_response(
+        cd=cd, df=pd.DataFrame(),
+        filters={}, measures=None,
+        start_period=None, end_period=None,
+        fmt="records", user_query={},
+    )
+    assert resp.reporting_year is None
+    assert resp.period == {"start": None, "end": None}

@@ -5,8 +5,6 @@ import pytest
 
 from wgea_mcp import curated
 from wgea_mcp.curated import (
-    CuratedDataset,
-    CuratedDimensionValues,
     dimension_columns,
     id_columns,
     measure_columns,

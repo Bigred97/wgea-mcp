@@ -7,7 +7,6 @@ import zipfile
 import pandas as pd
 import pytest
 
-from wgea_mcp import parsing
 from wgea_mcp.parsing import (
     ParseError,
     drop_blank_rows,

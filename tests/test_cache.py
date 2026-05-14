@@ -1,7 +1,6 @@
 """SQLite cache — get/set, TTL, corruption recovery."""
 from __future__ import annotations
 
-import asyncio
 from datetime import timedelta
 
 import pytest

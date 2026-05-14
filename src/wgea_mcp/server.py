@@ -32,7 +32,7 @@ from .client import (
     get_stale_signal,
     reset_stale_signal,
 )
-from .discovery import resolve_latest_zip, resolve_for_year
+from .discovery import resolve_latest_zip
 from .models import (
     ColumnDetail,
     DataResponse,

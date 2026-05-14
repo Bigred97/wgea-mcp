@@ -1,11 +1,8 @@
 """CKAN discovery — package_show parsing, year resolution, seed fallback."""
 from __future__ import annotations
 
-import json
 
-import httpx
 import pytest
-from respx import MockRouter
 
 from wgea_mcp import discovery
 from wgea_mcp.cache import Cache

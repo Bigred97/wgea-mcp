@@ -88,6 +88,15 @@ class DataResponse(BaseModel):
     dataset_name: str
     query: dict[str, Any] = Field(default_factory=dict)
     reporting_year: str | None = None  # latest reporting_year covered by this response
+    period: dict[str, str | None] = Field(
+        default_factory=lambda: {"start": None, "end": None},
+        description=(
+            "Canonical period bounds {start, end} for cross-sister consumers. "
+            "Populated alongside the wgea-specific reporting_year. For a single "
+            "reporting year both bounds match; for multi-year spans they bracket "
+            "the range."
+        ),
+    )
     unit: str | None = None
     row_count: int = 0
     records: list[Any] = Field(default_factory=list)

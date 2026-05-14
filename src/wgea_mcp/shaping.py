@@ -36,7 +36,6 @@ from typing import Any
 import pandas as pd
 
 from .curated import (
-    CuratedColumn,
     CuratedDataset,
     dimension_columns,
     id_columns,
@@ -82,7 +81,7 @@ def _employer_scorer(s1, s2, **kwargs):
     substring against the typo).
     """
     try:
-        from rapidfuzz import fuzz
+        from rapidfuzz import fuzz  # noqa: F401 — false positive; used after the try-block
     except ImportError:  # pragma: no cover — rapidfuzz is a required dep
         return 0.0
     return (fuzz.WRatio(s1, s2, **kwargs) + fuzz.partial_ratio(s1, s2, **kwargs)) / 2
@@ -250,7 +249,7 @@ def fuzzy_match_employer(
     above 50, so noise from completely-unrelated matches is suppressed.
     """
     try:
-        from rapidfuzz import fuzz, process
+        from rapidfuzz import fuzz, process  # noqa: F401 — false positive; both used after the try-block
     except ImportError:  # pragma: no cover — rapidfuzz is a required dep
         return [], []
 
@@ -601,10 +600,14 @@ def build_response(
             response_unit = next(iter(units))
 
     reporting_year_latest: str | None = None
+    period_start: str | None = None
+    period_end: str | None = None
     if records:
         years = sorted({r.reporting_year for r in records if r.reporting_year})
         if years:
             reporting_year_latest = years[-1]
+            period_start = years[0]
+            period_end = years[-1]
 
     if fmt == "csv":
         out_records: list[Observation] | list[dict[str, Any]] = []
@@ -621,6 +624,7 @@ def build_response(
         dataset_name=cd.name,
         query=user_query,
         reporting_year=reporting_year_latest,
+        period={"start": period_start, "end": period_end},
         unit=response_unit,
         row_count=len(records),
         records=out_records,
