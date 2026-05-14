@@ -5,6 +5,42 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] — 2026-05-15
+
+### Added — Wave 1 portfolio interoperability fixes
+
+Cross-sister consistency pass on input handling + error messages. Three
+additive, non-breaking changes that bring `wgea-mcp` up to the abs/aihw/ato
+standard identified in the portfolio interoperability audit.
+
+- **Int-year coercion in period validation.** `start_period=2024` (a bare
+  JSON int) now coerces to `"2024"` instead of raising a TypeError-style
+  message. LLM clients routinely send JSON ints; this removes a confusing
+  failure mode that surfaced as `must be a string, got int`. Out-of-range
+  ints (e.g. `12345`, `1800`) still raise — with a hint pointing at the
+  canonical `'YYYY-YY'` / `'YYYY'` forms.
+- **Strengthened `ValueError` messages.** Every rejection now follows the
+  canonical shape `<rejection>. Did you mean X?. Valid options: <list>. Try
+  <tool>(<args>) for more.`. New rapidfuzz-driven "Did you mean ...?"
+  hints on: unknown dataset_ids (`'WORKFORCE_COMPOSTION'` →
+  `'WORKFORCE_COMPOSITION'`), unknown `format` values, and unknown filter
+  keys. Period-format reminders added to both invalid-format and
+  end-before-start errors, with worked examples.
+- **Type signature broadened** on `get_data`'s `start_period` /
+  `end_period` to `str | int | None` so the tool's published schema
+  reflects the new coercion behaviour.
+
+7 new unit tests in `tests/test_server_validation.py` cover the coercion
+boundary, the `bool`-subclass-of-int guard, the dataset-id suggestion
+hint, the strengthened period-format/swap errors, and the existing
+non-string test was updated to match the new shape.
+
+### Backward compatibility
+
+No breaking changes. Inputs that previously raised a type error on bare
+int years now succeed; every existing rejection path still raises, just
+with a more actionable message.
+
 ## [0.1.5] — 2026-05-15
 
 ### Bug fix — Glama Tool Definition Quality compliance

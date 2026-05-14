@@ -75,8 +75,13 @@ def test_validate_period_invalid_raises():
 
 
 def test_validate_period_non_string_raises():
-    with pytest.raises(ValueError, match="must be a string"):
-        _validate_period(2024, "start_period")
+    # 2024 is now coerced to '2024' (Wave 1 int-year coercion). Use an
+    # out-of-range int to trigger the still-reject path.
+    with pytest.raises(ValueError, match="out of range"):
+        _validate_period(12345, "start_period")
+    # Truly non-numeric types still raise the type-mismatch error.
+    with pytest.raises(ValueError, match="string or int year"):
+        _validate_period([2024], "start_period")  # type: ignore[arg-type]
 
 
 async def test_search_datasets_rejects_empty_query():
@@ -115,3 +120,60 @@ async def test_get_data_bad_period_raises():
             end_period="2023-24",
             format="records",
         )
+
+
+# --- Int-year coercion (Wave 1 interop fix) ----------------------------------
+
+def test_validate_period_accepts_int_year():
+    """Bare int years are coerced to 'YYYY' string at the boundary."""
+    assert _validate_period(2024, "start_period") == "2024"
+    assert _validate_period(2025, "end_period") == "2025"
+    assert _validate_period(1907, "start_period") == "1907"
+    assert _validate_period(2100, "end_period") == "2100"
+
+
+def test_validate_period_int_out_of_range_raises_helpful():
+    """Out-of-range int years raise with a YYYY-YY example, not a TypeError."""
+    with pytest.raises(ValueError, match="out of range"):
+        _validate_period(1800, "start_period")
+    with pytest.raises(ValueError, match="out of range"):
+        _validate_period(2200, "end_period")
+    with pytest.raises(ValueError, match="YYYY"):
+        _validate_period(99, "start_period")
+
+
+def test_validate_period_rejects_bool_with_hint():
+    """bool is a subclass of int but must NOT be coerced silently."""
+    with pytest.raises(ValueError, match="bool"):
+        _validate_period(True, "start_period")
+
+
+# --- Strengthened ValueError messages (Wave 1 interop fix) -------------------
+
+async def test_unknown_dataset_suggests_close_match():
+    """A near-miss dataset id surfaces a 'Did you mean ...?' hint."""
+    with pytest.raises(ValueError, match="Did you mean") as excinfo:
+        await server.describe_dataset(dataset_id="WORKFORCE_COMPOSTION")
+    assert "WORKFORCE_COMPOSITION" in str(excinfo.value)
+
+
+def test_period_format_error_includes_examples():
+    """Invalid format includes YYYY/YYYY-YY shape + a worked example."""
+    with pytest.raises(ValueError) as excinfo:
+        _validate_period("?garbage?", "start_period")
+    msg = str(excinfo.value)
+    assert "YYYY" in msg
+    assert "Example" in msg or "Try" in msg or "example" in msg
+
+
+async def test_period_swap_error_includes_format_hint():
+    """end < start should remind users of the period formats."""
+    with pytest.raises(ValueError, match="YYYY") as excinfo:
+        await server.get_data(
+            dataset_id="WORKFORCE_COMPOSITION",
+            filters=None,
+            start_period="2025-26",
+            end_period="2023-24",
+            format="records",
+        )
+    assert "before start_period" in str(excinfo.value)

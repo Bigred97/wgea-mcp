@@ -90,6 +90,39 @@ async def reset_client_for_tests() -> None:
         _client = None
 
 
+def _fuzzy_suggest(query: str, candidates: list[str], cutoff: int = 60) -> str | None:
+    """Return the closest candidate string if it scores >= cutoff on RapidFuzz WRatio.
+
+    Falls back to None if rapidfuzz is unavailable or no match clears the bar.
+    The 60 cutoff catches realistic typos ('WORKFORCE_COMPOSTION' ->
+    'WORKFORCE_COMPOSITION') without firing on unrelated near-misses.
+    """
+    if not query or not candidates:
+        return None
+    try:
+        from rapidfuzz import fuzz, process
+    except ImportError:
+        return None
+    match = process.extractOne(query, candidates, scorer=fuzz.WRatio, score_cutoff=cutoff)
+    return match[0] if match else None
+
+
+def _unknown_dataset_msg(dataset_id: str) -> str:
+    """Build a 'not curated' error message with a 'Did you mean ...' hint and
+    a truncated list of valid IDs."""
+    ids = curated.list_ids()
+    norm = dataset_id.strip().upper() if isinstance(dataset_id, str) else ""
+    suggestion = _fuzzy_suggest(norm, ids, cutoff=60)
+    suggest_msg = f"Did you mean {suggestion!r}? " if suggestion else ""
+    shown = ids[:10]
+    rest = f" ({len(ids)} total)" if len(ids) > len(shown) else ""
+    return (
+        f"Dataset {dataset_id!r} is not a curated wgea-mcp dataset. "
+        f"{suggest_msg}Valid options: {', '.join(shown)}{rest}. "
+        "Try list_curated() to enumerate, or search_datasets('<topic>') to find by keyword."
+    )
+
+
 def _normalize_dataset_id(dataset_id: Any) -> str:
     if not isinstance(dataset_id, str):
         raise ValueError(
@@ -124,18 +157,44 @@ def _validate_filters(filters: Any) -> dict[str, Any]:
 def _validate_period(value: Any, field_name: str) -> str | None:
     if value is None:
         return None
+    # LLM clients routinely send JSON ints (e.g. {"start_period": 2024}). Coerce
+    # 4-digit ints in a realistic WGEA reporting-year range to the canonical
+    # "YYYY" string at the boundary so we don't surface a confusing type error.
+    if isinstance(value, bool):
+        # bool is a subclass of int; reject it explicitly before the int branch.
+        raise ValueError(
+            f"{field_name} must be a string or int year, got bool. "
+            f"Try {field_name}='2024-25' (WGEA reporting year), '2024' (year), "
+            "or 2024 (int year)."
+        )
+    if isinstance(value, int):
+        if 1900 <= value <= 2100:
+            value = str(value)
+        else:
+            raise ValueError(
+                f"{field_name} integer {value} out of range. "
+                f"For year-only periods pass a 4-digit year like 2024, or use string "
+                f"forms 'YYYY' (e.g. '2024') or 'YYYY-YY' (e.g. '2024-25'). "
+                f"Try {field_name}='2024-25'."
+            )
     if not isinstance(value, str):
         raise ValueError(
-            f"{field_name} must be a string like '2024-25' or '2025', "
-            f"got {type(value).__name__}."
+            f"{field_name} must be a string or int year, got {type(value).__name__}. "
+            f"Try {field_name}='2024-25' (WGEA reporting year), '2024' (year), "
+            "or 2024 (int year)."
         )
     s = value.strip()
     if not s:
         return None
     if not _PERIOD_PATTERN.match(s):
+        guess = s[:4] if s[:4].isdigit() else "2024"
         raise ValueError(
             f"{field_name} {value!r} has invalid format. "
-            "Use 'YYYY-YY' (e.g. '2024-25') or 'YYYY' (e.g. '2025')."
+            "Period formats: 'YYYY-YY' (e.g. '2024-25' — WGEA reporting year) or "
+            "'YYYY' (e.g. '2024'). "
+            f"Did you mean {guess!r}? "
+            f"Example: get_data('WORKFORCE_COMPOSITION', start_period='2023-24', "
+            "end_period='2024-25')."
         )
     return s
 
@@ -308,10 +367,7 @@ async def describe_dataset(
     norm_id = _normalize_dataset_id(dataset_id)
     cd = curated.get(norm_id)
     if cd is None:
-        raise ValueError(
-            f"Dataset {dataset_id!r} is not a curated wgea-mcp dataset. "
-            "Try list_curated() to see available IDs."
-        )
+        raise ValueError(_unknown_dataset_msg(dataset_id))
     dims_out = [
         ColumnDetail(
             key=c.key,
@@ -377,10 +433,7 @@ async def _get_data_impl(
     norm_id = _normalize_dataset_id(dataset_id)
     cd = curated.get(norm_id)
     if cd is None:
-        raise ValueError(
-            f"Dataset {dataset_id!r} is not a curated wgea-mcp dataset. "
-            "Try list_curated() to see available IDs."
-        )
+        raise ValueError(_unknown_dataset_msg(dataset_id))
     filters_d = _validate_filters(filters)
     start_v = _validate_period(start_period, "start_period")
     end_v = _validate_period(end_period, "end_period")
@@ -391,16 +444,24 @@ async def _get_data_impl(
     else:
         raise ValueError(
             f"format must be a string, got {type(fmt).__name__}. "
-            f"Valid options: {sorted(_VALID_FORMATS)}"
+            f"Valid options: {sorted(_VALID_FORMATS)}. "
+            "Try format='records' (default), 'series', or 'csv'."
         )
     if fmt_norm not in _VALID_FORMATS:
+        valid_sorted = sorted(_VALID_FORMATS)
+        suggestion = _fuzzy_suggest(fmt_norm, valid_sorted, cutoff=60)
+        suggest_msg = f"Did you mean {suggestion!r}? " if suggestion else ""
         raise ValueError(
-            f"Unknown format {fmt!r}. Valid options: {sorted(_VALID_FORMATS)}"
+            f"Unknown format {fmt!r}. {suggest_msg}"
+            f"Valid options: {valid_sorted}. "
+            "Try format='records' (default), 'series', or 'csv'."
         )
     if start_v and end_v and start_v > end_v:
         raise ValueError(
             f"end_period ({end_v}) is before start_period ({start_v}). "
-            "Try swapping them."
+            f"Try swapping them: start_period={end_v!r}, end_period={start_v!r}. "
+            "Period formats: 'YYYY-YY' (e.g. '2024-25' — WGEA reporting year) or "
+            "'YYYY' (e.g. '2024')."
         )
 
     user_query: dict[str, Any] = {}
@@ -504,21 +565,22 @@ async def get_data(
         ),
     ] = None,
     start_period: Annotated[
-        str | None,
+        str | int | None,
         Field(
             description=(
                 "Inclusive start reporting year. Format: 'YYYY-YY' (e.g. "
                 "'2023-24') or 'YYYY' (matched against WGEA's reporting_year "
-                "column)."
+                "column). Bare int years like 2023 are coerced to '2023' "
+                "automatically."
             ),
-            examples=["2023-24", "2024-25", "2023"],
+            examples=["2023-24", "2024-25", "2023", 2023],
         ),
     ] = None,
     end_period: Annotated[
-        str | None,
+        str | int | None,
         Field(
             description="Inclusive end reporting year. Same format as start_period.",
-            examples=["2024-25", "2025-26"],
+            examples=["2024-25", "2025-26", 2024],
         ),
     ] = None,
     format: Annotated[

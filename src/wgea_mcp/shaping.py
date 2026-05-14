@@ -47,6 +47,23 @@ from .curated import (
 from .models import DataResponse, Observation
 
 
+def _fuzzy_filter_key_suggest(query: str, candidates: list[str], cutoff: int = 60) -> str | None:
+    """Closest filter-key match for `query` from `candidates`, or None.
+
+    Helps surface 'Did you mean 'employer_name'?' when a user passes
+    'employer_nam' or some other near-miss. Silently no-ops if rapidfuzz
+    isn't installed.
+    """
+    if not query or not candidates:
+        return None
+    try:
+        from rapidfuzz import fuzz, process
+    except ImportError:
+        return None
+    match = process.extractOne(query, candidates, scorer=fuzz.WRatio, score_cutoff=cutoff)
+    return match[0] if match else None
+
+
 # Fuzzy-match threshold for employer-name search via the combined scorer.
 # The combined scorer averages WRatio + partial_ratio so typos like
 # "Commonweath Bank" → "Commonwealth Bank Of Australia" rank above
@@ -301,9 +318,14 @@ def _apply_filters(
     for user_key, user_val in filters.items():
         if user_key not in valid_dim_keys:
             valid = sorted(valid_dim_keys)
+            suggestion = _fuzzy_filter_key_suggest(user_key, valid)
+            suggest_msg = f"Did you mean {suggestion!r}? " if suggestion else ""
             raise ValueError(
                 f"Unknown filter {user_key!r} for dataset {cd.id!r}. "
-                f"Try one of: {', '.join(valid[:15])}"
+                f"{suggest_msg}"
+                f"Valid filters: {', '.join(valid[:15])}"
+                + ("..." if len(valid) > 15 else "")
+                + f". Try describe_dataset({cd.id!r}) to see the full filter schema."
             )
         if user_val is None:
             raise ValueError(
