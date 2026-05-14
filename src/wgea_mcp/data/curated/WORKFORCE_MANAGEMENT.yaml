@@ -1,0 +1,161 @@
+id: WORKFORCE_MANAGEMENT
+name: WGEA Workforce Management Statistics — manager movements by gender (annual)
+description: |
+  Per-employer workforce movement statistics: promotions, internal appointments,
+  resignations, and dismissals broken down by gender and manager category. One
+  row per (employer × movement_type × manager_category × manager_type ×
+  employment_status × employment_type × gender) with the count in `n_employees`.
+
+  Answers questions like "how many women got promoted to manager at <employer>
+  in 2024-25?", "which industries promote the fewest women?", or "what's
+  the gender split on resignations vs promotions at this company?". ~235k
+  rows in the 2024-25 release.
+period_coverage: latest WGEA reporting year (2024-25 in the 2025 release)
+update_frequency: annual
+source_url: https://data.gov.au/data/dataset/wgea-dataset
+zip_member: wgea_workforce_management_statistics_2025.csv
+format: csv_in_zip
+layout: wide
+cache_kind: data
+period_column: reporting_year
+search_keywords:
+  - promotion
+  - promotions
+  - promotions women
+  - resignation
+  - resignations
+  - hire
+  - hires
+  - appointment
+  - dismissal
+  - turnover
+  - movement
+  - manager movements
+  - workforce management
+  - leadership
+  - succession
+  - retention
+  - representation
+  - women in leadership
+  - manager category
+columns:
+  reporting_year:
+    source_column: reporting_year
+    description: "WGEA reporting year (e.g. '2024-25')."
+    role: dimension
+    dtype: string
+  corporate_group_name:
+    source_column: corporate_group_name
+    description: Corporate group name.
+    role: dimension
+    dtype: string
+    permissive: true
+  employer_name:
+    source_column: employer_name
+    description: Employer's legal name. Permissive + fuzzy-matched.
+    role: dimension
+    dtype: string
+    permissive: true
+  employer_abn:
+    source_column: employer_abn
+    description: 11-digit ABN.
+    role: id
+    dtype: string
+  is_relevant_employer:
+    source_column: is_relevant_employer
+    description: TRUE/FALSE — whether the employer was a 'relevant employer' under the WGE Act.
+    role: dimension
+    dtype: string
+  employer_size:
+    source_column: employer_size
+    description: Employer size band.
+    role: dimension
+    dtype: string
+  anzsic_division:
+    source_column: anzsic_division
+    description: Top-level ANZSIC industry division.
+    role: dimension
+    dtype: string
+  anzsic_subdivision:
+    source_column: anzsic_subdivision
+    description: ANZSIC subdivision.
+    role: dimension
+    dtype: string
+  anzsic_group:
+    source_column: anzsic_group
+    description: ANZSIC group.
+    role: dimension
+    dtype: string
+  anzsic_class:
+    source_column: anzsic_class
+    description: ANZSIC class.
+    role: dimension
+    dtype: string
+  anzsic_code:
+    source_column: anzsic_code
+    description: 4-digit ANZSIC code.
+    role: dimension
+    dtype: string
+  movement_type:
+    source_column: movement_type
+    description: "'Promotions', 'Appointments', 'Internal appointments', 'Resignations', 'Dismissals', or similar movement category."
+    role: dimension
+    dtype: string
+  manager_category:
+    source_column: manager_category
+    description: "'Managers' or 'Non-Managers'."
+    role: dimension
+    dtype: string
+  manager_type:
+    source_column: manager_type
+    description: "Sub-tier within Managers (e.g. 'Mid to entry level management', 'Senior Managers', 'KMP')."
+    role: dimension
+    dtype: string
+  employment_status:
+    source_column: employment_status
+    description: "'Full-time', 'Part-time', 'Casual'."
+    role: dimension
+    dtype: string
+  employment_type:
+    source_column: employment_type
+    description: "'Permanent', 'Contract'."
+    role: dimension
+    dtype: string
+  gender:
+    source_column: gender
+    description: "'Women', 'Men', or 'Non-binary'."
+    role: dimension
+    dtype: string
+  n_employees:
+    source_column: n_employees
+    description: Count of employees in this (employer × movement × manager_category × manager_type × status × type × gender) bucket.
+    unit: employees
+    role: measure
+    dtype: integer
+dimension_values:
+  manager_category:
+    permissive: true
+    values:
+      manager: Managers
+      managers: Managers
+      non_manager: Non-Managers
+      non_managers: Non-Managers
+  movement_type:
+    permissive: true
+    values:
+      promotion: Promotions
+      promotions: Promotions
+      resignation: Resignations
+      resignations: Resignations
+      appointment: Appointments
+      appointments: Appointments
+      dismissal: Dismissals
+      dismissals: Dismissals
+  gender:
+    permissive: true
+    values:
+      women: Women
+      female: Women
+      men: Men
+      male: Men
+      non_binary: Non-binary

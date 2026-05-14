@@ -1,0 +1,148 @@
+id: HARM_PREVENTION
+name: WGEA Harm Prevention — sexual harassment + DV policy responses (annual)
+description: |
+  Per-employer responses to the WGEA questionnaire's "Harm prevention" section:
+  formal sexual-harassment policies, family/domestic violence support, training
+  programs, complaint mechanisms, and respect-at-work measures.
+
+  Answers: "does <employer> have a sexual harassment policy?", "which
+  employers support staff experiencing family/domestic violence?", "which
+  industries are leading on respect-at-work training?". ~342 MB in the
+  2024-25 release — the largest of the questionnaire CSVs.
+period_coverage: latest WGEA reporting year (2024-25 in the 2025 release)
+update_frequency: annual
+source_url: https://data.gov.au/data/dataset/wgea-dataset
+zip_member: wgea_questionnaire_harm_prevention_2025.csv
+format: csv_in_zip
+layout: long
+cache_kind: data
+period_column: reporting_year
+search_keywords:
+  - sexual harassment
+  - harassment
+  - sex discrimination
+  - domestic violence
+  - dv
+  - family violence
+  - respect at work
+  - bullying
+  - harm prevention
+  - safety
+columns:
+  reporting_year:
+    source_column: reporting_year
+    description: WGEA reporting year.
+    role: dimension
+    dtype: string
+  corporate_group_name:
+    source_column: corporate_group_name
+    description: Corporate group name.
+    role: dimension
+    dtype: string
+    permissive: true
+  employer_name:
+    source_column: employer_name
+    description: Employer's legal name. Permissive + fuzzy-matched.
+    role: dimension
+    dtype: string
+    permissive: true
+  employer_abn:
+    source_column: employer_abn
+    description: 11-digit ABN.
+    role: id
+    dtype: string
+  is_relevant_employer:
+    source_column: is_relevant_employer
+    description: TRUE/FALSE.
+    role: dimension
+    dtype: string
+  employer_size:
+    source_column: employer_size
+    description: Employer size band.
+    role: dimension
+    dtype: string
+  anzsic_division:
+    source_column: anzsic_division
+    description: ANZSIC industry division.
+    role: dimension
+    dtype: string
+  anzsic_subdivision:
+    source_column: anzsic_subdivision
+    description: ANZSIC subdivision.
+    role: dimension
+    dtype: string
+  anzsic_group:
+    source_column: anzsic_group
+    description: ANZSIC group.
+    role: dimension
+    dtype: string
+  anzsic_class:
+    source_column: anzsic_class
+    description: ANZSIC class.
+    role: dimension
+    dtype: string
+  anzsic_code:
+    source_column: anzsic_code
+    description: 4-digit ANZSIC code.
+    role: dimension
+    dtype: string
+  section:
+    source_column: section
+    description: "Questionnaire section ('Harm Prevention')."
+    role: dimension
+    dtype: string
+  subsection:
+    source_column: subsection
+    description: "Subsection ('Sexual Harassment', 'Domestic Violence', 'Respect at Work')."
+    role: dimension
+    dtype: string
+    permissive: true
+  question_index:
+    source_column: question_index
+    description: Short question identifier.
+    role: dimension
+    dtype: string
+    permissive: true
+  question_text:
+    source_column: question_text
+    description: Full question text.
+    role: dimension
+    dtype: string
+    permissive: true
+  additional_question_info_1:
+    source_column: additional_question_info_1
+    description: Optional sub-question modifier.
+    role: dimension
+    dtype: string
+    permissive: true
+  additional_question_info_2:
+    source_column: additional_question_info_2
+    description: Optional second sub-question modifier.
+    role: dimension
+    dtype: string
+    permissive: true
+  response_type:
+    source_column: response_type
+    description: How the answer was solicited.
+    role: dimension
+    dtype: string
+  response:
+    source_column: response
+    description: The employer's answer to the question.
+    role: dimension
+    dtype: string
+    permissive: true
+  n_responses:
+    source_column: response
+    description: Count of responses matching the filter.
+    unit: responses
+    role: measure
+    dtype: count
+dimension_values:
+  response_type:
+    permissive: true
+    values:
+      select: Select
+      multi_select: Multi-select
+      checkbox: Checkbox
+      text: Text

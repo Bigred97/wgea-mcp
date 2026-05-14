@@ -1,0 +1,11 @@
+{
+  "refreshed_at": "2026-05-14",
+  "source": "data.gov.au CKAN package_show for wgea-dataset",
+  "ckan_package_url": "https://data.gov.au/data/api/3/action/package_show?id=wgea-dataset",
+  "comment": "Last-known-good Public Data File ZIP URLs. Keys are reporting-year-end (2025 means the 2024-25 reporting year). Refreshed nightly by .github/workflows/refresh-urls.yml when configured.",
+  "urls": {
+    "2025": "https://data.gov.au/data/dataset/4d35cd80-2538-4705-82f3-d0d18e823d98/resource/380faa66-1126-4020-8b89-496821290624/download/wgea_public_dataset_2025.zip",
+    "2024": "https://data.gov.au/data/dataset/4d35cd80-2538-4705-82f3-d0d18e823d98/resource/f12cc138-44a8-45fc-9ba7-97ee5dadd683/download/wgea_public_dataset_2024.zip",
+    "2023": "https://data.gov.au/data/dataset/4d35cd80-2538-4705-82f3-d0d18e823d98/resource/4f716314-5de2-425b-aef2-6501c0be076f/download/wgea_public_dataset_2023.zip"
+  }
+}

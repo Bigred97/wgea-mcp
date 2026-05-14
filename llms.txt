@@ -1,0 +1,54 @@
+# wgea-mcp
+
+MCP server for the Workplace Gender Equality Agency (WGEA) Public Data
+File. Plain-English access to per-employer workforce composition,
+gender-equality policy answers, parental leave, flexible work, and
+harm-prevention data — every WGEA-reporting Australian employer (~9,600
+employers with 100+ employees), every year, with fuzzy employer-name
+search and a CC-BY 3.0 AU attribution contract.
+
+## Install
+
+uvx --upgrade wgea-mcp
+
+## Tools
+
+- search_datasets(query, limit=10)
+- describe_dataset(dataset_id)
+- get_data(dataset_id, filters, start_period, end_period, format, max_rows)
+- latest(dataset_id, filters, max_rows)
+- list_curated()
+
+## Curated datasets
+
+- WORKFORCE_COMPOSITION       — employer × occupation × gender headcount
+- WORKFORCE_MANAGEMENT        — manager movements by gender
+- GENDER_EQUALITY_ACTIONS     — pay-gap analyses, targets, governance
+- PARENTAL_LEAVE_FLEX         — parental leave + flexible work policies
+- HARM_PREVENTION             — sexual harassment + DV policies
+- EMPLOYEE_SUPPORT            — carer leave, EAP, mental health
+- WORKPLACE_OVERVIEW          — board composition, CEO + KMP demographics
+
+## Backend
+
+- Source: data.gov.au CKAN package `wgea-dataset`
+- UUID: 4d35cd80-2538-4705-82f3-d0d18e823d98
+- Licence: Creative Commons Attribution 3.0 Australia (CC-BY 3.0 AU)
+- Reporting cadence: annual (typically Jan-July release)
+- Latest reporting year as of writing: 2024-25 (released Jan 2026)
+
+## Trust contract per response
+
+source = "Workplace Gender Equality Agency"
+attribution = "Source: Workplace Gender Equality Agency. Licensed under
+Creative Commons Attribution 3.0 Australia
+(https://creativecommons.org/licenses/by/3.0/au/). Original dataset:
+https://data.gov.au/data/dataset/wgea-dataset"
+source_url = canonical data.gov.au landing page
+download_url = actual ZIP URL used post-discovery
+reporting_year = e.g. "2024-25"
+stale = false (true only if CKAN failed and seed manifest was used)
+
+## Sister packages
+
+abs-mcp, rba-mcp, ato-mcp, apra-mcp, aihw-mcp, asic-mcp, au-weather-mcp

@@ -1,0 +1,57 @@
+name: publish
+
+# Publishes the wheel + sdist to PyPI on every published Release.
+# Uses PyPI Trusted Publishing (OIDC) — no token in repo secrets.
+#
+# Setup (one-time, done once on PyPI):
+#   pypi.org → "Pending publishers" → Add
+#   Owner=Bigred97, Repository=wgea-mcp, Workflow=publish.yml, Environment=pypi
+#
+# Trigger: create a GitHub Release. The release's tag (e.g. v0.1.0) drives
+# the version that gets uploaded. Make sure pyproject.toml's `version`
+# matches before tagging.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build distributions
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+      - name: Set up Python
+        run: uv python install 3.12
+      - name: Build wheel + sdist
+        run: uv build
+      - name: Verify wheel installs cleanly
+        run: |
+          uv run --isolated --with ./dist/*.whl python -c \
+            "import wgea_mcp.server as s; n = len(s.list_curated()); assert n == 7, f'expected 7 curated, got {n}'; print(f'OK ({n} curated datasets)')"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    name: Publish to PyPI
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/wgea-mcp
+    permissions:
+      id-token: write   # required for trusted publishing
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - name: Publish to PyPI via OIDC
+        uses: pypa/gh-action-pypi-publish@release/v1

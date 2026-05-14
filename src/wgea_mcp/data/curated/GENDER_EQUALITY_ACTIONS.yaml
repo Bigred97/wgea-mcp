@@ -1,0 +1,151 @@
+id: GENDER_EQUALITY_ACTIONS
+name: WGEA Gender Equality Actions — employer policy + strategy responses (annual)
+description: |
+  Per-employer responses to the WGEA questionnaire's "Action on gender equality"
+  section: did the employer conduct a remuneration-gap analysis, set targets,
+  consult employees, train management, publish results, etc. One row per
+  (employer × question × response) — a Q&A long-format table.
+
+  Answers: "did Commonwealth Bank conduct a pay-gap analysis in 2024-25?",
+  "which employers in mining set gender targets?", "what % of large
+  employers consult employees on gender equality?". ~77 MB / hundreds of
+  thousands of rows in the 2024-25 release.
+period_coverage: latest WGEA reporting year (2024-25 in the 2025 release)
+update_frequency: annual
+source_url: https://data.gov.au/data/dataset/wgea-dataset
+zip_member: wgea_questionnaire_action_on_gender_equality_2025.csv
+format: csv_in_zip
+layout: long
+cache_kind: data
+period_column: reporting_year
+search_keywords:
+  - action
+  - actions
+  - strategy
+  - policy
+  - pay gap analysis
+  - remuneration analysis
+  - gender targets
+  - consultation
+  - governance
+  - gender equality
+  - gender pay gap
+columns:
+  reporting_year:
+    source_column: reporting_year
+    description: WGEA reporting year.
+    role: dimension
+    dtype: string
+  corporate_group_name:
+    source_column: corporate_group_name
+    description: Corporate group name.
+    role: dimension
+    dtype: string
+    permissive: true
+  employer_name:
+    source_column: employer_name
+    description: Employer's legal name. Permissive + fuzzy-matched.
+    role: dimension
+    dtype: string
+    permissive: true
+  employer_abn:
+    source_column: employer_abn
+    description: 11-digit ABN.
+    role: id
+    dtype: string
+  is_relevant_employer:
+    source_column: is_relevant_employer
+    description: TRUE/FALSE.
+    role: dimension
+    dtype: string
+  employer_size:
+    source_column: employer_size
+    description: Employer size band.
+    role: dimension
+    dtype: string
+  anzsic_division:
+    source_column: anzsic_division
+    description: ANZSIC industry division.
+    role: dimension
+    dtype: string
+  anzsic_subdivision:
+    source_column: anzsic_subdivision
+    description: ANZSIC subdivision.
+    role: dimension
+    dtype: string
+  anzsic_group:
+    source_column: anzsic_group
+    description: ANZSIC group.
+    role: dimension
+    dtype: string
+  anzsic_class:
+    source_column: anzsic_class
+    description: ANZSIC class.
+    role: dimension
+    dtype: string
+  anzsic_code:
+    source_column: anzsic_code
+    description: 4-digit ANZSIC code.
+    role: dimension
+    dtype: string
+  section:
+    source_column: section
+    description: "Top-level questionnaire section, e.g. 'Action on gender equality'."
+    role: dimension
+    dtype: string
+  subsection:
+    source_column: subsection
+    description: "Subsection within the section, e.g. 'Gender Pay Gap', 'Employee Consultation'."
+    role: dimension
+    dtype: string
+    permissive: true
+  question_index:
+    source_column: question_index
+    description: "Short alphanumeric question identifier (e.g. 'EAct.Act.N'). Stable across years."
+    role: dimension
+    dtype: string
+    permissive: true
+  question_text:
+    source_column: question_text
+    description: Full question text. Free-form — use substring matching with 'pay gap*' style wildcards.
+    role: dimension
+    dtype: string
+    permissive: true
+  additional_question_info_1:
+    source_column: additional_question_info_1
+    description: Optional sub-question modifier.
+    role: dimension
+    dtype: string
+    permissive: true
+  additional_question_info_2:
+    source_column: additional_question_info_2
+    description: Optional second sub-question modifier.
+    role: dimension
+    dtype: string
+    permissive: true
+  response_type:
+    source_column: response_type
+    description: "'Select', 'Multi-select', 'Checkbox', 'Text' — how the answer was solicited."
+    role: dimension
+    dtype: string
+  response:
+    source_column: response
+    description: The employer's answer to the question — usually 'Yes' / 'No' or a free-text response. This is the primary value column for questionnaire datasets.
+    role: dimension
+    dtype: string
+    permissive: true
+  n_responses:
+    source_column: response
+    description: Count of responses matching the filter (each row counts as 1). Useful for aggregating "how many employers answered Yes".
+    unit: responses
+    role: measure
+    dtype: count
+dimension_values:
+  response_type:
+    permissive: true
+    values:
+      select: Select
+      multi_select: Multi-select
+      multiselect: Multi-select
+      checkbox: Checkbox
+      text: Text

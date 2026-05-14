@@ -1,0 +1,152 @@
+id: PARENTAL_LEAVE_FLEX
+name: WGEA Parental Leave + Flexible Work — employer policy responses (annual)
+description: |
+  Per-employer responses to the WGEA questionnaire's "Flexible work" section:
+  parental leave offerings (paid weeks, gender-neutral, employee tenure
+  requirement), flexible work options (compressed weeks, remote work, part-time
+  arrangements), and post-parental-leave return-to-work programs.
+
+  Answers: "which employers offer paid parental leave to fathers?", "what
+  flexible work options does Atlassian offer?", "which industries have the
+  best return-to-work rates?". ~119 MB in the 2024-25 release.
+period_coverage: latest WGEA reporting year (2024-25 in the 2025 release)
+update_frequency: annual
+source_url: https://data.gov.au/data/dataset/wgea-dataset
+zip_member: wgea_questionnaire_flexible_work_2025.csv
+format: csv_in_zip
+layout: long
+cache_kind: data
+period_column: reporting_year
+search_keywords:
+  - parental leave
+  - paid parental leave
+  - maternity
+  - paternity
+  - flexible work
+  - flexible working
+  - flexible work from home
+  - work from home
+  - remote work
+  - compressed week
+  - part time
+  - job sharing
+  - return to work
+  - wfh
+columns:
+  reporting_year:
+    source_column: reporting_year
+    description: WGEA reporting year.
+    role: dimension
+    dtype: string
+  corporate_group_name:
+    source_column: corporate_group_name
+    description: Corporate group name.
+    role: dimension
+    dtype: string
+    permissive: true
+  employer_name:
+    source_column: employer_name
+    description: Employer's legal name. Permissive + fuzzy-matched.
+    role: dimension
+    dtype: string
+    permissive: true
+  employer_abn:
+    source_column: employer_abn
+    description: 11-digit ABN.
+    role: id
+    dtype: string
+  is_relevant_employer:
+    source_column: is_relevant_employer
+    description: TRUE/FALSE.
+    role: dimension
+    dtype: string
+  employer_size:
+    source_column: employer_size
+    description: Employer size band.
+    role: dimension
+    dtype: string
+  anzsic_division:
+    source_column: anzsic_division
+    description: ANZSIC industry division.
+    role: dimension
+    dtype: string
+  anzsic_subdivision:
+    source_column: anzsic_subdivision
+    description: ANZSIC subdivision.
+    role: dimension
+    dtype: string
+  anzsic_group:
+    source_column: anzsic_group
+    description: ANZSIC group.
+    role: dimension
+    dtype: string
+  anzsic_class:
+    source_column: anzsic_class
+    description: ANZSIC class.
+    role: dimension
+    dtype: string
+  anzsic_code:
+    source_column: anzsic_code
+    description: 4-digit ANZSIC code.
+    role: dimension
+    dtype: string
+  section:
+    source_column: section
+    description: "Questionnaire section ('Flexible work')."
+    role: dimension
+    dtype: string
+  subsection:
+    source_column: subsection
+    description: "Subsection ('Parental Leave', 'Flexible Working')."
+    role: dimension
+    dtype: string
+    permissive: true
+  question_index:
+    source_column: question_index
+    description: Short question identifier.
+    role: dimension
+    dtype: string
+    permissive: true
+  question_text:
+    source_column: question_text
+    description: Full question text.
+    role: dimension
+    dtype: string
+    permissive: true
+  additional_question_info_1:
+    source_column: additional_question_info_1
+    description: Optional sub-question modifier.
+    role: dimension
+    dtype: string
+    permissive: true
+  additional_question_info_2:
+    source_column: additional_question_info_2
+    description: "Optional second modifier (often 'All employees' / 'Some employees' / 'No employees')."
+    role: dimension
+    dtype: string
+    permissive: true
+  response_type:
+    source_column: response_type
+    description: How the answer was solicited.
+    role: dimension
+    dtype: string
+  response:
+    source_column: response
+    description: The employer's answer to the question.
+    role: dimension
+    dtype: string
+    permissive: true
+  n_responses:
+    source_column: response
+    description: Count of responses matching the filter.
+    unit: responses
+    role: measure
+    dtype: count
+dimension_values:
+  response_type:
+    permissive: true
+    values:
+      select: Select
+      multi_select: Multi-select
+      checkbox: Checkbox
+      text: Text

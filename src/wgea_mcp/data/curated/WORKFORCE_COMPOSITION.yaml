@@ -1,0 +1,172 @@
+id: WORKFORCE_COMPOSITION
+name: WGEA Workforce Composition — gender × occupation × employer headcount (annual)
+description: |
+  Per-employer workforce composition from the WGEA Public Data File. One row
+  per (employer × ANZSIC × manager_category × occupation × employment_status ×
+  employment_type × gender) with the headcount in `n_employees`.
+
+  The fastest answer to "what's the gender breakdown at <employer>?", "how
+  many women senior managers does this company employ?", or "which industries
+  have the most women CEOs?". ~210k rows in the 2024-25 release covering
+  ~9,600 distinct employers (all private-sector + Commonwealth public-sector
+  employers with 100+ employees).
+
+  Notes:
+  - Filter `employer_name` is permissive and fuzzy-matched via rapidfuzz.
+  - The headline pay-gap % published in WGEA's Data Explorer is NOT in this
+    file — WGEA aggregates remuneration data before public release. Use this
+    dataset for workforce composition; use WGEA's Data Explorer for the
+    headline pay-gap percentage.
+period_coverage: latest WGEA reporting year (2024-25 in the 2025 release)
+update_frequency: annual
+source_url: https://data.gov.au/data/dataset/wgea-dataset
+zip_member: wgea_workforce_composition_2025.csv
+format: csv_in_zip
+layout: wide
+cache_kind: data
+period_column: reporting_year
+search_keywords:
+  - workforce
+  - composition
+  - employer
+  - gender
+  - women
+  - men
+  - occupation
+  - managers
+  - executives
+  - ceo
+  - kmp
+  - anzsic
+  - industry
+  - headcount
+  - employees
+  - diversity
+  - representation
+columns:
+  reporting_year:
+    source_column: reporting_year
+    description: "WGEA reporting year (e.g. '2024-25'). Runs 1 April → 31 March."
+    role: dimension
+    dtype: string
+  corporate_group_name:
+    source_column: corporate_group_name
+    description: The parent / corporate group name. May equal employer_name when there is no parent group.
+    role: dimension
+    dtype: string
+    permissive: true
+  employer_name:
+    source_column: employer_name
+    description: The reporting employer's legal name. Permissive + fuzzy-matched. Try 'Commonwealth Bank' / 'CBA', 'Westpac', 'Qantas', etc. Substring search via 'name*' wildcard also works.
+    role: dimension
+    dtype: string
+    permissive: true
+  employer_abn:
+    source_column: employer_abn
+    description: 11-digit Australian Business Number of the reporting employer.
+    role: id
+    dtype: string
+  is_relevant_employer:
+    source_column: is_relevant_employer
+    description: "TRUE if the employer was a 'relevant employer' under the WGE Act for this reporting year (i.e. legally required to report)."
+    role: dimension
+    dtype: string
+  employer_size:
+    source_column: employer_size
+    description: "Employer size band: '<250', '250-499', '500- 999', '1000-2499', '2500-4999', '5000+'."
+    role: dimension
+    dtype: string
+  anzsic_division:
+    source_column: anzsic_division
+    description: "Top-level ANZSIC industry division. Try 'Mining', 'Retail Trade', 'Financial and Insurance Services', etc."
+    role: dimension
+    dtype: string
+  anzsic_subdivision:
+    source_column: anzsic_subdivision
+    description: ANZSIC subdivision (one level below division).
+    role: dimension
+    dtype: string
+  anzsic_group:
+    source_column: anzsic_group
+    description: ANZSIC group (one level below subdivision).
+    role: dimension
+    dtype: string
+  anzsic_class:
+    source_column: anzsic_class
+    description: ANZSIC class (most granular industry code).
+    role: dimension
+    dtype: string
+  anzsic_code:
+    source_column: anzsic_code
+    description: 4-digit ANZSIC code corresponding to anzsic_class.
+    role: dimension
+    dtype: string
+  manager_category:
+    source_column: manager_category
+    description: "'Manager' or 'Non-Manager'."
+    role: dimension
+    dtype: string
+  occupation:
+    source_column: occupation
+    description: "WGEA standard occupation label (e.g. 'CEOs', 'Other Executives and General Managers', 'Senior Managers', 'Professionals')."
+    role: dimension
+    dtype: string
+  employment_status:
+    source_column: employment_status
+    description: "'Full-time', 'Part-time', or 'Casual'."
+    role: dimension
+    dtype: string
+  employment_type:
+    source_column: employment_type
+    description: "'Permanent', 'Contract', or similar engagement type."
+    role: dimension
+    dtype: string
+  gender:
+    source_column: gender
+    description: "'Women', 'Men', or 'Non-binary' (when reported)."
+    role: dimension
+    dtype: string
+  n_employees:
+    source_column: n_employees
+    description: Headcount of employees in this (employer × ANZSIC × manager × occupation × status × type × gender) bucket.
+    unit: employees
+    role: measure
+    dtype: integer
+dimension_values:
+  manager_category:
+    permissive: true
+    values:
+      manager: Manager
+      managers: Managers
+      non_manager: Non-Manager
+      non_managers: Non-Manager
+  gender:
+    permissive: true
+    values:
+      women: Women
+      female: Women
+      f: Women
+      men: Men
+      male: Men
+      m: Men
+      non_binary: Non-binary
+      nb: Non-binary
+  is_relevant_employer:
+    permissive: true
+    values:
+      true: "TRUE"
+      yes: "TRUE"
+      "y": "TRUE"
+      false: "FALSE"
+      no: "FALSE"
+      "n": "FALSE"
+  employment_status:
+    permissive: true
+    values:
+      full_time: Full-time
+      full-time: Full-time
+      ft: Full-time
+      part_time: Part-time
+      part-time: Part-time
+      pt: Part-time
+      casual: Casual
