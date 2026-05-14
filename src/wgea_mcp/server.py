@@ -617,6 +617,7 @@ async def latest(
             description="Cap on returned rows. Default 2000, max 10000.",
             ge=1,
             le=10_000,
+            examples=[100, 500, 2000],
         ),
     ] = None,
 ) -> DataResponse:

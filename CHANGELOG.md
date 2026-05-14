@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.5] — 2026-05-15
+
+### Bug fix — Glama Tool Definition Quality compliance
+
+`latest()`'s `max_rows` parameter had `description=` but was missing the
+`examples=[...]` Field annotation. CLAUDE.md flags this as a
+**non-negotiable Glama Tool Definition Quality requirement**. Caught
+during an end-to-end pass that enumerated every tool's parameter schema
+and counted missing examples — 1/16 parameters non-compliant.
+
+Fix: added `examples=[100, 500, 2000]` to `latest()`'s `max_rows`. All
+five tools now meet the Glama bar — every parameter has both
+`description` and `examples`.
+
+### Tests
+
+- 2 new regression tests under `test_bug_regression.py::test_bug7_*`:
+  - `test_bug7_all_tool_params_have_examples` — enumerate every tool's
+    parameters; assert all have `examples`
+  - `test_bug7_all_tool_params_have_descriptions` — same for `description`
+- Full unit suite: **162 tests passing** (was 160)
+- Zero-flake 10/10
+
 ## [0.1.4] — 2026-05-15
 
 ### Bug fix — `truncated_at` field was never set

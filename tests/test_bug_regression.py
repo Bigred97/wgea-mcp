@@ -211,6 +211,48 @@ def test_bug6_truncated_at_none_when_under_cap(workforce_df):
     )
 
 
+# -------------------------------------------------------------------------
+# Bug 7: `latest()` tool's `max_rows` parameter had `description` but no
+# `examples=[...]` array. CLAUDE.md flags this as a "non-negotiable" Glama
+# Tool Definition Quality requirement. Caught by an end-to-end pass that
+# enumerates every tool's parameter schema and counts missing examples.
+# -------------------------------------------------------------------------
+async def test_bug7_all_tool_params_have_examples():
+    from wgea_mcp.server import mcp
+
+    tools = await mcp.list_tools()
+    bad = []
+    for t in tools:
+        if t.name == "list_curated":
+            continue  # no params, exempt
+        props = (t.parameters or {}).get("properties", {})
+        for pname, pdef in props.items():
+            if not isinstance(pdef, dict):
+                continue
+            if not pdef.get("examples"):
+                bad.append(f"{t.name}.{pname}")
+    assert not bad, (
+        f"All tool params should carry Field(examples=[...]) per CLAUDE.md "
+        f"Glama bar — missing on: {bad}"
+    )
+
+
+async def test_bug7_all_tool_params_have_descriptions():
+    """Companion to bug 7: every param needs `description=` too."""
+    from wgea_mcp.server import mcp
+
+    tools = await mcp.list_tools()
+    bad = []
+    for t in tools:
+        props = (t.parameters or {}).get("properties", {})
+        for pname, pdef in props.items():
+            if not isinstance(pdef, dict):
+                continue
+            if not pdef.get("description"):
+                bad.append(f"{t.name}.{pname}")
+    assert not bad, f"All tool params need description= — missing on: {bad}"
+
+
 def test_bug6_truncated_at_none_when_max_rows_none(workforce_df):
     cd = curated.get("WORKFORCE_COMPOSITION")
     resp = shaping.build_response(
