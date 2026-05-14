@@ -5,6 +5,38 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.3] — 2026-05-15
+
+### Graceful degradation — fall back to stale cache on upstream failure + CLAUDE.md for sister-MCP parity
+
+- **`WGEAClient` now falls back to the last cached ZIP when data.gov.au is
+  unreachable.** Previously a 5xx from data.gov.au or an `httpx.ConnectError`
+  bubbled up as `WGEAAPIError` and broke the calling agent's chain of
+  reasoning. Now the client serves the cached payload (regardless of TTL),
+  records the reason in a per-context `_stale_signal` ContextVar, and
+  `_get_data_impl` copies it onto `DataResponse.stale / stale_reason`.
+  Original raise-behaviour is preserved when there's no cache to fall
+  back to — fail-closed when there's nothing safe to serve.
+- **`Cache.get_stale(key)`** — new lookup that returns
+  `(payload, cached_at_epoch)` regardless of TTL. The building block for
+  the graceful-degradation path.
+- **`DataResponse.truncated_at: int | None`** added (matches the
+  portfolio-wide envelope; previously absent from wgea-mcp).
+- **`CLAUDE.md`** authored at repo root for parity with abs-mcp / rba-mcp /
+  ato-mcp / apra-mcp / aihw-mcp / asic-mcp. Documents the source agency,
+  curated dataset list, the 5-tool surface, the trust contract, and the
+  repo-specific gotcha that the publish workflow is named `publish.yml`
+  (not `release.yml` like the sisters) — PyPI Trusted Publishing's
+  pending-publisher is bound to that filename.
+
+### Tests
+
+- 4 new regression tests under `test_client.py` pin the stale-fallback
+  behaviour: 5xx → fallback, ConnectError → fallback, empty-cache → raises,
+  `Cache.get_stale()` round-trip.
+- Full unit suite: 158 tests passing (was 154).
+- Zero-flake on 3 consecutive runs.
+
 ## [0.1.2] — 2026-05-15
 
 ### Bug fix

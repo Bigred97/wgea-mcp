@@ -18,7 +18,9 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
 from collections import OrderedDict
+from contextvars import ContextVar
 from typing import Any
 
 import httpx
@@ -34,6 +36,38 @@ _ALLOWED_HOST_SUFFIXES = ("data.gov.au",)
 # read-after-write race. Each entry is the raw bytes of a fetched resource;
 # memory cost is bounded because we cap at this many entries (LRU).
 _RECENT_RESULTS_MAX_ENTRIES = 16
+
+
+# ─── stale signal (graceful-degradation reporting per CLAUDE.md dim #4) ─
+# When the upstream data.gov.au call fails, `_fetch_cached` falls back to
+# the cached payload regardless of TTL and records the staleness in this
+# ContextVar. Server-side tool wrappers read it after the request chain
+# and copy it onto DataResponse.stale / .stale_reason. ContextVar (not an
+# instance attr) so concurrent MCP tool calls each see their own state.
+_stale_signal: ContextVar[tuple[bool, str | None]] = ContextVar(
+    "wgea_mcp_stale_signal", default=(False, None)
+)
+
+
+def reset_stale_signal() -> None:
+    """Clear the stale state. Call once at the start of each tool call."""
+    _stale_signal.set((False, None))
+
+
+def get_stale_signal() -> tuple[bool, str | None]:
+    """Return (stale, reason) for the most recent fetch chain in this context."""
+    return _stale_signal.get()
+
+
+def _mark_stale(reason: str) -> None:
+    """Record that a stale-cache fallback was served this context.
+
+    If multiple fetches in one chain are stale, we keep the FIRST reason
+    (it's usually the most informative — the originating upstream failure).
+    """
+    cur_stale, _ = _stale_signal.get()
+    if not cur_stale:
+        _stale_signal.set((True, reason))
 
 
 class WGEAAPIError(Exception):
@@ -161,11 +195,47 @@ class WGEAClient:
             try:
                 resp = await self._http.get(url)
                 resp.raise_for_status()
-            except httpx.HTTPStatusError as e:
-                raise WGEAAPIError(
-                    f"data.gov.au returned {e.response.status_code} for {url}"
-                ) from e
-            except httpx.RequestError as e:
+            except (httpx.HTTPStatusError, httpx.RequestError) as e:
+                # Graceful degradation: when upstream is unreachable, fall
+                # back to the most-recent cached payload (regardless of TTL)
+                # rather than raising and breaking the agent's chain of
+                # reasoning. Staleness is surfaced via the _stale_signal
+                # ContextVar and ends up in DataResponse.stale / stale_reason.
+                fallback = await self.cache.get_stale(url)
+                if fallback is not None:
+                    payload, cached_at = fallback
+                    age_min = max(0, int((time.time() - cached_at) / 60))
+                    if isinstance(e, httpx.HTTPStatusError):
+                        upstream = (
+                            f"WGEA dataset fetch returned "
+                            f"{e.response.status_code}"
+                        )
+                    else:
+                        upstream = (
+                            f"WGEA dataset fetch failed ({type(e).__name__})"
+                        )
+                    _mark_stale(
+                        f"{upstream} for {url}; serving cached payload "
+                        f"from ~{age_min} minute(s) ago"
+                    )
+                    # Mirror the success path: populate the in-memory LRU
+                    # and resolve the in-flight future so concurrent callers
+                    # see the same fallback bytes.
+                    async with self._recent_results_lock:
+                        self._recent_results[url] = payload
+                        self._recent_results.move_to_end(url)
+                        while (
+                            len(self._recent_results)
+                            > _RECENT_RESULTS_MAX_ENTRIES
+                        ):
+                            self._recent_results.popitem(last=False)
+                    future.set_result(payload)
+                    return payload
+                # Genuinely no cache to fall back to — preserve original behaviour.
+                if isinstance(e, httpx.HTTPStatusError):
+                    raise WGEAAPIError(
+                        f"data.gov.au returned {e.response.status_code} for {url}"
+                    ) from e
                 raise WGEAAPIError(f"data.gov.au request failed: {e}") from e
             await self.cache.set(
                 url,

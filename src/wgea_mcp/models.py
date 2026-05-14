@@ -100,6 +100,10 @@ class DataResponse(BaseModel):
     did_you_mean: list[str] = Field(default_factory=list)  # fuzzy-match hints
     stale: bool = False
     stale_reason: str | None = None
+    # Set when `latest()` (or get_data's max_rows cap) truncated a larger
+    # post-filter result. Original row count goes here so agents can detect
+    # + surface the cap.
+    truncated_at: int | None = None
     server_version: str = Field(default_factory=lambda: _get_server_version())
 
 

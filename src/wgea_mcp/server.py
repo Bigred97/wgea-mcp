@@ -26,7 +26,12 @@ from fastmcp import FastMCP
 from pydantic import Field
 
 from . import catalog, curated
-from .client import WGEAAPIError, WGEAClient
+from .client import (
+    WGEAAPIError,
+    WGEAClient,
+    get_stale_signal,
+    reset_stale_signal,
+)
 from .discovery import resolve_latest_zip, resolve_for_year
 from .models import (
     ColumnDetail,
@@ -363,6 +368,12 @@ async def _get_data_impl(
     measures: Any = None,
     latest_only: bool = False,
 ) -> DataResponse:
+    # Reset the per-context stale signal at the top of every tool invocation
+    # so a previous fetch's flag can't leak into this response. Mirrors the
+    # abs-mcp graceful-degradation pattern: when data.gov.au is unreachable
+    # and WGEAClient falls back to a cached ZIP past its TTL, the signal
+    # propagates up here and we surface it on the response.
+    reset_stale_signal()
     norm_id = _normalize_dataset_id(dataset_id)
     cd = curated.get(norm_id)
     if cd is None:
@@ -429,7 +440,7 @@ async def _get_data_impl(
         effective_max = max_rows
     else:
         effective_max = _DEFAULT_MAX_ROWS
-    return build_response(
+    response = build_response(
         cd=cd,
         df=df,
         filters=filters_d,
@@ -444,6 +455,16 @@ async def _get_data_impl(
         stale_reason=stale_reason,
         max_rows=effective_max,
     )
+    # Merge in the HTTP-level stale signal (set by WGEAClient when it served
+    # a cached payload past its TTL because data.gov.au was unreachable).
+    # The seed-manifest path already set response.stale via build_response;
+    # if that's already True we keep its (more informative) reason. Otherwise
+    # we adopt the HTTP-fallback reason.
+    http_stale, http_reason = get_stale_signal()
+    if http_stale and not response.stale:
+        response.stale = True
+        response.stale_reason = http_reason
+    return response
 
 
 @mcp.tool
