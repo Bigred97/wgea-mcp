@@ -1,54 +1,37 @@
 # wgea-mcp
 
-MCP server for the Workplace Gender Equality Agency (WGEA) Public Data
-File. Plain-English access to per-employer workforce composition,
-gender-equality policy answers, parental leave, flexible work, and
-harm-prevention data — every WGEA-reporting Australian employer (~9,600
-employers with 100+ employees), every year, with fuzzy employer-name
-search and a CC-BY 3.0 AU attribution contract.
+> MCP server exposing the Workplace Gender Equality Agency Public Data File through 5 plain-English tools — per-employer workforce composition, manager movements, parental leave, harassment policies, board diversity for every WGEA-reporting Australian employer (~9,600).
 
-## Install
+wgea-mcp is the Workplace Gender Equality Agency (WGEA) member of the Australian Public Data MCP portfolio. It fetches the annual Public Data File (a ~71 MB ZIP of CSVs) from data.gov.au's CKAN, with a 2-tier URL resolver — live CKAN `package_show` then a bundled seed manifest (CI-refreshed). The seven thematic CSVs inside the ZIP are exposed as seven datasets.
 
-uvx --upgrade wgea-mcp
+Per-employer reporting is a deliberate disclosure under the Workplace Gender Equality Act 2012 — redistribution is explicitly intended. Fuzzy employer-name search resolves abbreviations and aliases ("CBA" → Commonwealth Bank of Australia, "Woolies" → Woolworths Group Limited) via a `WRatio + partial_ratio` blended scorer; the `did_you_mean` field surfaces top-5 closest matches when nothing resolves exactly. Every response carries CC-BY 3.0 Australia attribution. WGEA reporting years are labelled `YYYY-YY` (e.g. `2024-25` = 1 Apr 2024 to 31 Mar 2025).
+
+Important caveat: WGEA's Data Explorer publishes a headline per-employer gender pay gap percentage; that specific aggregate is NOT in the public CSV release because WGEA pre-aggregates remuneration data before publication. Use wgea-mcp for the underlying workforce composition + policy detail; use [WGEA's Data Explorer](https://www.wgea.gov.au/Data-Explorer) for the headline pay-gap percentage.
+
+## Documentation
+
+- [README](https://github.com/Bigred97/wgea-mcp/blob/main/README.md): Full setup + tool usage + reliability notes
+- [CHANGELOG](https://github.com/Bigred97/wgea-mcp/blob/main/CHANGELOG.md): Release history
+- [PyPI](https://pypi.org/project/wgea-mcp/): `uvx --upgrade wgea-mcp`
 
 ## Tools
 
-- search_datasets(query, limit=10)
-- describe_dataset(dataset_id)
-- get_data(dataset_id, filters, start_period, end_period, format, max_rows)
-- latest(dataset_id, filters, max_rows)
-- list_curated()
+- search_datasets(query, limit=10): Fuzzy search the 7 curated WGEA datasets
+- describe_dataset(dataset_id): Schema — filterable dimensions, measures, source URL, current reporting year
+- get_data(dataset_id, filters, start_period, end_period, format, max_rows): Filtered query; max_rows caps at 10000
+- latest(dataset_id, filters, max_rows): Restrict to the latest reporting year only
+- list_curated(): Enumerate the 7 dataset IDs
 
-## Curated datasets
+## Example queries
 
-- WORKFORCE_COMPOSITION       — employer × occupation × gender headcount
-- WORKFORCE_MANAGEMENT        — manager movements by gender
-- GENDER_EQUALITY_ACTIONS     — pay-gap analyses, targets, governance
-- PARENTAL_LEAVE_FLEX         — parental leave + flexible work policies
-- HARM_PREVENTION             — sexual harassment + DV policies
-- EMPLOYEE_SUPPORT            — carer leave, EAP, mental health
-- WORKPLACE_OVERVIEW          — board composition, CEO + KMP demographics
+- "What's the gender breakdown at Commonwealth Bank?"
+- "Which mining companies set gender targets in 2024-25?"
+- "Workforce composition by occupation at Qantas"
+- "Sexual harassment policy responses across financial services"
+- "Promotions to manager by gender at Atlassian"
+- "Compare board diversity at the Big 4 banks"
 
-## Backend
+## Optional
 
-- Source: data.gov.au CKAN package `wgea-dataset`
-- UUID: 4d35cd80-2538-4705-82f3-d0d18e823d98
-- Licence: Creative Commons Attribution 3.0 Australia (CC-BY 3.0 AU)
-- Reporting cadence: annual (typically Jan-July release)
-- Latest reporting year as of writing: 2024-25 (released Jan 2026)
-
-## Trust contract per response
-
-source = "Workplace Gender Equality Agency"
-attribution = "Source: Workplace Gender Equality Agency. Licensed under
-Creative Commons Attribution 3.0 Australia
-(https://creativecommons.org/licenses/by/3.0/au/). Original dataset:
-https://data.gov.au/data/dataset/wgea-dataset"
-source_url = canonical data.gov.au landing page
-download_url = actual ZIP URL used post-discovery
-reporting_year = e.g. "2024-25"
-stale = false (true only if CKAN failed and seed manifest was used)
-
-## Sister packages
-
-abs-mcp, rba-mcp, ato-mcp, apra-mcp, aihw-mcp, asic-mcp, au-weather-mcp
+- [Sister MCPs](https://github.com/Bigred97?tab=repositories&q=mcp): Other AU public-data MCPs in the portfolio
+- [aus-identity](https://pypi.org/project/aus-identity/): Used by sisters; WGEA per-employer rows carry ABN as the primary entity key

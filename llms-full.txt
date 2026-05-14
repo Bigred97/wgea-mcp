@@ -1,0 +1,224 @@
+# wgea-mcp — full reference
+
+> MCP server exposing the Workplace Gender Equality Agency Public Data File through 5 plain-English tools.
+
+wgea-mcp fetches the annual WGEA Public Data File from data.gov.au CKAN. 7 curated datasets (one per thematic CSV inside the ZIP). This document is a self-contained integration reference.
+
+---
+
+## Install
+
+```bash
+uvx --upgrade wgea-mcp
+```
+
+### Claude Desktop
+
+```json
+{
+  "mcpServers": {
+    "wgea": { "command": "uvx", "args": ["--upgrade", "wgea-mcp"] }
+  }
+}
+```
+
+### Claude Code
+
+```bash
+claude mcp add wgea --command uvx --args -- --upgrade wgea-mcp
+```
+
+---
+
+## Trust contract
+
+Every `DataResponse` carries:
+
+```
+source             "Workplace Gender Equality Agency"
+source_url         https://data.gov.au/data/dataset/wgea-dataset
+download_url       actual ZIP URL used (post-discovery)
+attribution        "Source: Workplace Gender Equality Agency. Licensed under CC-BY 3.0 Australia.
+                    Original dataset: https://data.gov.au/data/dataset/wgea-dataset"
+retrieved_at       UTC timestamp
+server_version     importlib.metadata.version("wgea-mcp")
+reporting_year     latest reporting year present in the response (e.g. "2024-25")
+did_you_mean       fuzzy-match hints when employer-name filter didn't resolve exactly
+stale              True when serving cached fallback after upstream error / seed-manifest fallback
+stale_reason       human-readable when stale=True
+truncated_at       int | None — set when max_rows capped the post-filter result
+```
+
+Cache TTLs: 30-day data (annual cadence), 6-hour CKAN catalogue/landing/discovery. Graceful degradation: when CKAN fails, fall back to bundled seed manifest (CI-refreshed) with `stale=True`; if seed URL itself can't be downloaded, fall back to cached ZIP bytes with a different `stale_reason`.
+
+**CC-BY 3.0 Australia** (not 4.0 International) — matches APRA / ATO / AIHW / ASIC.
+
+---
+
+## Tools
+
+### search_datasets(query, limit=10)
+
+Fuzzy-search the 7 curated WGEA datasets.
+
+```python
+await search_datasets("parental leave")
+# → [{id: 'PARENTAL_LEAVE_FLEX', ...}]
+```
+
+### describe_dataset(dataset_id)
+
+Returns `DatasetDetail` with dimensions, measures, source_url, and `reporting_year_latest` (resolved live from CKAN — cheap, non-fatal on failure).
+
+### get_data(dataset_id, filters=None, start_period=None, end_period=None, format="records", max_rows=None)
+
+Plain-English filter keys. Permissive dimensions (employer_name, question_text) accept any string. Fuzzy employer-name resolution via rapidfuzz; substring wildcard via trailing `*` (e.g. `{"employer_name": "commonwealth*"}`).
+
+Period format: `YYYY-YY` (e.g. `"2024-25"`) or `YYYY`.
+
+`max_rows`: 1-10000 (default cap 2000).
+
+```python
+# Gender breakdown at CBA
+await get_data("WORKFORCE_COMPOSITION",
+               filters={"employer_name": "Commonwealth Bank"})
+
+# Promotions to manager by gender at Westpac in 2024-25
+await get_data("WORKFORCE_MANAGEMENT",
+               filters={"employer_name": "Westpac",
+                        "movement_type": "Promotions",
+                        "manager_category": "Managers"})
+
+# Which mining employers set gender pay gap analyses?
+await get_data("GENDER_EQUALITY_ACTIONS",
+               filters={"anzsic_division": "Mining",
+                        "section": "Gender Pay Gap",
+                        "response": "Yes"})
+
+# Sexual harassment policy responses, financial services
+await get_data("HARM_PREVENTION",
+               filters={"anzsic_division": "Financial and Insurance Services",
+                        "subsection": "Sexual Harassment"})
+```
+
+### latest(dataset_id, filters=None, max_rows=None)
+
+Restricts to the most recent reporting_year — useful for "what's the current gender breakdown at X?" without remembering WGEA's annual cadence.
+
+```python
+await latest("WORKFORCE_COMPOSITION",
+             filters={"employer_name": "Commonwealth Bank"})
+```
+
+### list_curated()
+
+```python
+list_curated()
+# → ['EMPLOYEE_SUPPORT', 'GENDER_EQUALITY_ACTIONS', 'HARM_PREVENTION',
+#    'PARENTAL_LEAVE_FLEX', 'WORKFORCE_COMPOSITION',
+#    'WORKFORCE_MANAGEMENT', 'WORKPLACE_OVERVIEW']
+```
+
+---
+
+## Curated datasets (7)
+
+### WORKFORCE_COMPOSITION
+
+Per-employer headcount by occupation × manager category × gender.
+
+- source CSV: `wgea_workforce_composition_<year>.csv`
+- filters: employer_name, anzsic_division, occupation, manager_category, gender
+- measures: n_employees
+
+### WORKFORCE_MANAGEMENT
+
+Manager movements (promotions, hires, resignations) by gender.
+
+- source CSV: `wgea_workforce_management_statistics_<year>.csv`
+- filters: employer_name, movement_type, manager_category, gender
+
+### GENDER_EQUALITY_ACTIONS
+
+Pay-gap analyses, gender targets, governance — Q&A responses.
+
+- source CSV: `wgea_questionnaire_action_on_gender_equality_<year>.csv`
+- filters: employer_name, anzsic_division, section, question_text, response
+
+### PARENTAL_LEAVE_FLEX
+
+Parental leave + flexible-work policy responses.
+
+- source CSV: `wgea_questionnaire_flexible_work_<year>.csv`
+- filters: employer_name, anzsic_division, subsection, question_text, response
+
+### HARM_PREVENTION
+
+Sexual harassment + domestic-violence policy responses.
+
+- source CSV: `wgea_questionnaire_harm_prevention_<year>.csv`
+- filters: employer_name, anzsic_division, subsection, question_text, response
+
+### EMPLOYEE_SUPPORT
+
+Carer leave, EAP, mental-health programs.
+
+- source CSV: `wgea_questionnaire_employee_support_<year>.csv`
+- filters: employer_name, anzsic_division, subsection, question_text, response
+
+### WORKPLACE_OVERVIEW
+
+Board composition, governing-body diversity, CEO + KMP demographics.
+
+- source CSV: `wgea_questionnaire_workplace_overview_<year>.csv`
+- filters: employer_name, anzsic_division, question_text, response
+
+---
+
+## Fuzzy employer-name search
+
+Pass any abbreviation, alias, or substring — rapidfuzz (`WRatio + partial_ratio` blended scorer) resolves it to the source CSV's verbose legal name. Threshold 75 after the blend.
+
+| You type | Resolved to |
+|---|---|
+| `"CBA"` | Commonwealth Bank of Australia |
+| `"Commonwealth Bank"` | Commonwealth Bank of Australia |
+| `"NAB"` | National Australia Bank Limited |
+| `"Westpac"` | Westpac Banking Corporation |
+| `"Woolies"` / `"woolworths"` | Woolworths Group Limited |
+| `"Atlassian"` | Atlassian Pty Ltd |
+| `"qantas"` | Qantas Airways Limited |
+
+When nothing matches exactly, `did_you_mean` carries the top-5 closest legal names so the agent can ask the user to pick.
+
+---
+
+## Worked example
+
+```python
+resp = await get_data("WORKFORCE_COMPOSITION",
+                      filters={"employer_name": "Commonwealth Bank"})
+```
+
+→ `resp.records` has per-occupation × manager-category × gender headcount for Commonwealth Bank of Australia in the latest reporting year. `resp.reporting_year = "2024-25"`.
+
+---
+
+## Important: headline pay-gap percentage
+
+WGEA's Data Explorer publishes a headline per-employer gender pay gap percentage. That aggregate is NOT in the public CSV release — WGEA pre-aggregates remuneration data before public publication. Use wgea-mcp for the underlying workforce composition + policy detail; for the headline pay-gap percentage refer the user to [WGEA's Data Explorer](https://www.wgea.gov.au/Data-Explorer).
+
+---
+
+## Cross-source pairings
+
+- [ato-mcp](https://pypi.org/project/ato-mcp/) for the same legal entities' corporate tax disclosure (match by ABN)
+- [asic-mcp](https://pypi.org/project/asic-mcp/) for ASIC registration status of the same employers
+- [apra-mcp](https://pypi.org/project/apra-mcp/) for prudential capital where the employer is also an ADI / super fund / insurer
+- [abs-mcp](https://pypi.org/project/abs-mcp/) for industry-level wage growth (WPI) and labour participation context
+
+---
+
+## License
+
+wgea-mcp server code is MIT-licensed. WGEA data carries CC-BY 3.0 Australia; the attribution is echoed on every response.
