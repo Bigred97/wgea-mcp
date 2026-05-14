@@ -5,6 +5,44 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.1] — 2026-05-15
+
+### Bug fixes (real customer impact)
+
+- **Multi-employer alias filter returned 0 rows.** Passing a list of
+  abbreviations like `{"employer_name": ["CBA", "NAB", "Westpac", "ANZ"]}`
+  hit the list-of-values branch, which translated each entry through
+  `translate_filter_value` (no-op for `employer_name`) instead of running
+  it through the alias map + fuzzy matcher. Each abbreviation stayed
+  un-expanded so the `isin()` mask matched nothing. Fix: route every list
+  entry through `fuzzy_match_employer` when the column is in the fuzzy
+  set (`employer_name`, `corporate_group_name`).
+- **`max_rows` negative / zero / too-large / bool silently fell back to
+  the default cap of 2000.** A FastMCP `Field` constraint catches these
+  when invoked through the protocol, but direct programmatic calls (and
+  some MCP clients that don't honour `ge`/`le` on Annotated metadata)
+  could slip through. Fix: explicit validation in `_get_data_impl`
+  rejecting non-positive, non-int, and >10_000 values.
+- **`None` filter value matched spurious rows via fuzzy.** Passing
+  `{"employer_name": None}` was `str()`-coerced to `"None"` and then
+  fuzzy-matched against `"Noni B Limited"` (and similar N-prefix names)
+  with score ≥80. Fix: reject `None` and `None`-in-list filter values
+  up-front with an actionable error.
+- **50 parallel callers hit the same URL → 2 HTTP requests** (instead
+  of the expected 1). Root cause: SQLite snapshot isolation. Late
+  callers whose `cache.get` connection opened *before* the writer's
+  commit saw a pre-write snapshot, returned MISS, and started fresh
+  HTTP requests. Fix: an in-memory LRU of the most recent 16 fetch
+  results, consulted right after the SQLite `cache.get` miss and
+  before the in-flight check. With the patch, 10/10 trials of 50
+  parallel callers fan in to exactly 1 HTTP request.
+
+### Tests
+
+- 145 unit tests (was 136 — 9 new regression tests pin each fix)
+- 7 live tests (unchanged)
+- Zero-flake 10/10 sequential runs
+
 ## [0.1.0] — 2026-05-14
 
 ### Initial release

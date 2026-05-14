@@ -285,6 +285,11 @@ def _apply_filters(
                 f"Unknown filter {user_key!r} for dataset {cd.id!r}. "
                 f"Try one of: {', '.join(valid[:15])}"
             )
+        if user_val is None:
+            raise ValueError(
+                f"Filter {user_key!r} value is None. Pass a string, number, or list "
+                "of strings — or omit the filter entirely to disable it."
+            )
         col_def = cd.columns.get(user_key)
         permissive_col = bool(col_def and col_def.permissive)
         fuzzy_col = user_key in ("employer_name", "corporate_group_name")
@@ -295,11 +300,36 @@ def _apply_filters(
                     f"Filter {user_key!r} has an empty list. "
                     "Pass at least one value, or omit the filter."
                 )
-            resolved = [
-                translate_filter_value(cd, user_key, str(v).strip())
-                for v in user_val
-            ]
-            mask = out[user_key].astype("string").isin(resolved)
+            # Reject None list entries early so they can't bleed into str() coercion.
+            for v in user_val:
+                if v is None:
+                    raise ValueError(
+                        f"Filter {user_key!r} list contains None. "
+                        "Drop the None entry or omit the filter."
+                    )
+            if fuzzy_col:
+                # Expand each list item via the alias map / fuzzy matcher so
+                # ['CBA', 'NAB'] resolves to {'Commonwealth Bank Of Australia',
+                # 'National Australia Bank Limited'} etc.
+                resolved: list[str] = []
+                for v in user_val:
+                    matched_values, dym = fuzzy_match_employer(
+                        out, user_key, str(v).strip()
+                    )
+                    if matched_values:
+                        resolved.extend(matched_values)
+                    else:
+                        suggestions.extend(dym)
+                if resolved:
+                    mask = out[user_key].astype("string").isin(resolved)
+                else:
+                    mask = pd.Series([False] * len(out), index=out.index)
+            else:
+                resolved = [
+                    translate_filter_value(cd, user_key, str(v).strip())
+                    for v in user_val
+                ]
+                mask = out[user_key].astype("string").isin(resolved)
         else:
             v_str = str(user_val).strip()
             # Wildcard substring match: 'cba*' or '*cba*' or 'cba~'
@@ -325,8 +355,8 @@ def _apply_filters(
                     # No matches — return an empty slice but keep the hints.
                     mask = pd.Series([False] * len(out), index=out.index)
             else:
-                resolved = translate_filter_value(cd, user_key, v_str)
-                mask = out[user_key].astype("string") == str(resolved)
+                resolved_single = translate_filter_value(cd, user_key, v_str)
+                mask = out[user_key].astype("string") == str(resolved_single)
         out = out.loc[mask]
     return out.reset_index(drop=True), suggestions
 

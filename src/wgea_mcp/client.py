@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from collections import OrderedDict
 from typing import Any
 
 import httpx
@@ -28,6 +29,11 @@ DEFAULT_BASE_URL = "https://data.gov.au"
 DEFAULT_TIMEOUT = httpx.Timeout(180.0, connect=15.0)  # 2025 ZIP is ~71MB
 
 _ALLOWED_HOST_SUFFIXES = ("data.gov.au",)
+
+# How many recent fetch results to keep in-memory to defeat the SQLite
+# read-after-write race. Each entry is the raw bytes of a fetched resource;
+# memory cost is bounded because we cap at this many entries (LRU).
+_RECENT_RESULTS_MAX_ENTRIES = 16
 
 
 class WGEAAPIError(Exception):
@@ -71,6 +77,17 @@ class WGEAClient:
         )
         self._in_flight: dict[str, asyncio.Future[bytes]] = {}
         self._in_flight_lock = asyncio.Lock()
+        # SQLite (even in WAL mode) gives readers a snapshot from when their
+        # connection opened. A reader that opens its connection *before* the
+        # writer commits will see a stale snapshot — i.e. MISS — even if its
+        # SELECT runs after the commit. Without mitigation, this means a burst
+        # of 50 concurrent callers can produce 2-3 HTTP requests for the same
+        # URL because some late-arriving callers find no in-flight future
+        # (the first caller already popped it) AND no cache entry (stale
+        # snapshot). This in-memory LRU is consulted between the SQLite
+        # cache.get and the in-flight registration to defeat the race.
+        self._recent_results: OrderedDict[str, bytes] = OrderedDict()
+        self._recent_results_lock = asyncio.Lock()
 
     async def aclose(self) -> None:
         await self._http.aclose()
@@ -120,6 +137,15 @@ class WGEAClient:
         if cached is not None:
             return cached
 
+        # Defeat the SQLite read-after-write race: late-arriving callers
+        # whose `cache.get` returned MISS despite a recent write can still
+        # find the bytes in the in-memory recent-results LRU.
+        async with self._recent_results_lock:
+            recent = self._recent_results.get(url)
+            if recent is not None:
+                self._recent_results.move_to_end(url)
+                return recent
+
         async with self._in_flight_lock:
             existing = self._in_flight.get(url)
             if existing is None:
@@ -148,6 +174,14 @@ class WGEAClient:
                 etag=resp.headers.get("etag"),
                 last_modified=resp.headers.get("last-modified"),
             )
+            # Populate the in-memory LRU BEFORE setting the future result so
+            # waiters that fall through into a future cache.get miss can use
+            # the in-memory hit.
+            async with self._recent_results_lock:
+                self._recent_results[url] = resp.content
+                self._recent_results.move_to_end(url)
+                while len(self._recent_results) > _RECENT_RESULTS_MAX_ENTRIES:
+                    self._recent_results.popitem(last=False)
             future.set_result(resp.content)
             return resp.content
         except BaseException as e:

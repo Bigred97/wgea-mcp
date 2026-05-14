@@ -410,11 +410,25 @@ async def _get_data_impl(
             df = df.loc[df[cd.period_column].astype("string") == year_label]
             df = df.reset_index(drop=True)
 
-    effective_max = (
-        max_rows
-        if (max_rows is not None and 1 <= max_rows <= _HARD_MAX_ROWS)
-        else _DEFAULT_MAX_ROWS
-    )
+    if max_rows is not None:
+        if isinstance(max_rows, bool) or not isinstance(max_rows, int):
+            raise ValueError(
+                f"max_rows must be a positive integer (1-{_HARD_MAX_ROWS}), "
+                f"got {max_rows!r} ({type(max_rows).__name__})."
+            )
+        if max_rows < 1:
+            raise ValueError(
+                f"max_rows must be >= 1, got {max_rows}. Omit the parameter "
+                f"to use the default cap of {_DEFAULT_MAX_ROWS}."
+            )
+        if max_rows > _HARD_MAX_ROWS:
+            raise ValueError(
+                f"max_rows must be <= {_HARD_MAX_ROWS}, got {max_rows}. "
+                "For larger queries, paginate by reporting_year or tighten filters."
+            )
+        effective_max = max_rows
+    else:
+        effective_max = _DEFAULT_MAX_ROWS
     return build_response(
         cd=cd,
         df=df,
