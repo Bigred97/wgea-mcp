@@ -169,6 +169,63 @@ def test_bug5_typo_corrected_to_correct_employer(workforce_df, typo, expected_su
     )
 
 
+# -------------------------------------------------------------------------
+# Bug 6: `truncated_at` field existed in the DataResponse model and was
+# documented in CLAUDE.md's trust contract, but shaping never set it when
+# max_rows capped the post-filter result. Agents had no way to detect
+# that they were seeing a truncated view.
+# -------------------------------------------------------------------------
+def test_bug6_truncated_at_set_when_capped(workforce_df):
+    cd = curated.get("WORKFORCE_COMPOSITION")
+    # Source fixture has > 50 rows; cap at 10 to force truncation.
+    resp = shaping.build_response(
+        cd=cd, df=workforce_df,
+        filters={}, measures=None,
+        start_period=None, end_period=None,
+        fmt="records", user_query={},
+        max_rows=10,
+    )
+    assert resp.row_count == 10
+    assert resp.truncated_at is not None, (
+        "truncated_at must be set when max_rows truncates the post-filter result"
+    )
+    assert resp.truncated_at > 10, (
+        f"truncated_at must hold the pre-truncation count (>{10}), got {resp.truncated_at}"
+    )
+
+
+def test_bug6_truncated_at_none_when_under_cap(workforce_df):
+    cd = curated.get("WORKFORCE_COMPOSITION")
+    resp = shaping.build_response(
+        cd=cd, df=workforce_df,
+        filters={"employer_name": "1-STOP CONNECTIONS"},  # small employer
+        measures=None,
+        start_period=None, end_period=None,
+        fmt="records", user_query={},
+        max_rows=200,
+    )
+    assert resp.row_count < 200
+    assert resp.truncated_at is None, (
+        f"truncated_at must be None when result fits under max_rows; "
+        f"got truncated_at={resp.truncated_at} for row_count={resp.row_count}"
+    )
+
+
+def test_bug6_truncated_at_none_when_max_rows_none(workforce_df):
+    cd = curated.get("WORKFORCE_COMPOSITION")
+    resp = shaping.build_response(
+        cd=cd, df=workforce_df,
+        filters={"employer_name": "Commonwealth Bank"},
+        measures=None,
+        start_period=None, end_period=None,
+        fmt="records", user_query={},
+        max_rows=None,
+    )
+    assert resp.truncated_at is None, (
+        "truncated_at must be None when no max_rows cap was specified"
+    )
+
+
 def test_bug5_existing_aliases_still_resolve(workforce_df):
     """The new combined scorer should not regress short-abbreviation aliases
     which were already handled by the static alias map."""

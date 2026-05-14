@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.4] — 2026-05-15
+
+### Bug fix — `truncated_at` field was never set
+
+The `DataResponse.truncated_at` field was added in 0.1.3 and documented in
+the CLAUDE.md trust contract ("set when max_rows capped the post-filter
+result"), but the shaping code never populated it. Agents asking for
+e.g. `max_rows=10` over a result of thousands had no signal that they
+were seeing a truncated view.
+
+Fix: `build_response` now records the pre-truncation row count and sets
+`truncated_at = pre_count` when `max_rows` clips the result. None when
+the result fits under the cap or when `max_rows` was not specified.
+
+### Tests
+
+- 3 new regression tests under `test_bug_regression.py::test_bug6_*`:
+  - `test_bug6_truncated_at_set_when_capped`
+  - `test_bug6_truncated_at_none_when_under_cap`
+  - `test_bug6_truncated_at_none_when_max_rows_none`
+- Full unit suite: **160 tests passing** (was 157)
+- Zero-flake 10/10
+- 7 live tests against data.gov.au still green
+
 ## [0.1.3] — 2026-05-15
 
 ### Graceful degradation — fall back to stale cache on upstream failure + CLAUDE.md for sister-MCP parity

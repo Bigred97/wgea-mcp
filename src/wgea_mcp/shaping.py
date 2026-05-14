@@ -559,8 +559,16 @@ def build_response(
 
     measure_keys = resolve_measure_keys(cd, measures)
 
-    if max_rows is not None and max_rows > 0 and len(period_filtered) > max_rows:
+    # Track the pre-truncation count so we can surface it on DataResponse.
+    # The trust contract (CLAUDE.md dim #2 — Data Pruning) requires that when
+    # max_rows truncates a larger post-filter result we tell the agent how
+    # many rows were dropped so it can decide whether to paginate or tighten
+    # filters. None means "no truncation happened".
+    pre_truncation_rows = len(period_filtered)
+    truncated_at: int | None = None
+    if max_rows is not None and max_rows > 0 and pre_truncation_rows > max_rows:
         period_filtered = period_filtered.iloc[:max_rows].reset_index(drop=True)
+        truncated_at = pre_truncation_rows
 
     records = shape_wide(period_filtered, cd, measure_keys)
 
@@ -601,4 +609,5 @@ def build_response(
         did_you_mean=suggestions,
         stale=stale,
         stale_reason=stale_reason,
+        truncated_at=truncated_at,
     )
