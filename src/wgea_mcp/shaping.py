@@ -47,8 +47,28 @@ from .curated import (
 from .models import DataResponse, Observation
 
 
-# Fuzzy-match threshold for employer-name search via rapidfuzz WRatio.
-_EMPLOYER_FUZZY_THRESHOLD = 80
+# Fuzzy-match threshold for employer-name search via the combined scorer.
+# The combined scorer averages WRatio + partial_ratio so typos like
+# "Commonweath Bank" → "Commonwealth Bank Of Australia" rank above
+# unrelated "Bank"-containing names like "Bendigo And Adelaide Bank Limited"
+# (which WRatio alone ties at 85.5 with Commonwealth, producing non-
+# deterministic ordering).
+_EMPLOYER_FUZZY_THRESHOLD = 75
+
+
+def _employer_scorer(s1, s2, **kwargs):
+    """Combined WRatio + partial_ratio scorer for employer-name fuzzy match.
+
+    WRatio alone ties typos like "Commonweath Bank" between Commonwealth and
+    Bendigo (both have "Bank"). partial_ratio breaks the tie decisively
+    in favour of the substring match (Commonwealth has the longer matching
+    substring against the typo).
+    """
+    try:
+        from rapidfuzz import fuzz
+    except ImportError:  # pragma: no cover — rapidfuzz is a required dep
+        return 0.0
+    return (fuzz.WRatio(s1, s2, **kwargs) + fuzz.partial_ratio(s1, s2, **kwargs)) / 2
 
 # Static alias map for top Australian employers. Loaded once. Aliases like
 # "CBA" → "commonwealth bank of australia" are checked BEFORE rapidfuzz so
@@ -247,8 +267,8 @@ def fuzzy_match_employer(
     if substrings:
         return substrings[:50], []
 
-    # Tier 4: rapidfuzz fallback
-    matches = process.extract(needle, haystack, scorer=fuzz.WRatio, limit=10)
+    # Tier 4: combined rapidfuzz scorer fallback (handles typos)
+    matches = process.extract(needle, haystack, scorer=_employer_scorer, limit=10)
     accepted = [m[0] for m in matches if m[1] >= threshold]
     suggestions = [m[0] for m in matches[:5] if m[1] >= 50]
     if accepted:

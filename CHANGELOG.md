@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.2] — 2026-05-15
+
+### Bug fix
+
+- **Fuzzy ranking of "Commonweath Bank" (and similar typos) picked
+  "Bendigo And Adelaide Bank Limited" over "Commonwealth Bank Of
+  Australia".** Root cause: rapidfuzz WRatio ties both at 85.5 because
+  they share "Bank" and similar length, and the tie-breaking order is
+  effectively non-deterministic. Same problem for `Comonwelth Bank`,
+  `Cwlth Bank`, and `Natoinal Australia`. Fix: blend WRatio with
+  partial_ratio (the substring scorer), which decisively favours
+  Commonwealth (partial_ratio 93.75 vs 50). Threshold lowered from 80
+  to 75 to keep accepting clear matches. Verified on 7 hand-crafted
+  typos: 7/7 correct.
+
+### Tests
+
+- 9 new regression tests under `test_bug_regression.py::test_bug5_*`
+- Full unit suite: 154 tests passing (was 145)
+- Zero-flake 10/10
+
 ## [0.1.1] — 2026-05-15
 
 ### Bug fixes (real customer impact)

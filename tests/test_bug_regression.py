@@ -145,6 +145,47 @@ async def test_bug4_in_flight_dedup_50_parallel(tmp_path):
         await client.aclose()
 
 
+# -------------------------------------------------------------------------
+# Bug 5: WRatio alone tied "Commonweath Bank" between Commonwealth and Bendigo
+# (both have "Bank"), so ranking was non-deterministic and often picked the
+# wrong one. Fixed by averaging WRatio with partial_ratio which strongly
+# favours the substring match.
+# -------------------------------------------------------------------------
+@pytest.mark.parametrize("typo,expected_substring", [
+    ("Commonweath Bank", "Commonwealth"),
+    ("Comonwelth Bank", "Commonwealth"),
+    ("Cwlth Bank", "Commonwealth"),
+    ("Natoinal Australia", "National Australia"),
+    ("Westpak", "Westpac"),
+    ("Quantas", "Qantas"),
+    ("woolworth", "Woolworths"),
+])
+def test_bug5_typo_corrected_to_correct_employer(workforce_df, typo, expected_substring):
+    matched, _ = shaping.fuzzy_match_employer(workforce_df, "employer_name", typo)
+    assert matched, f"typo {typo!r} should produce at least one match"
+    assert expected_substring.lower() in matched[0].lower(), (
+        f"typo {typo!r} top match was {matched[0]!r}, expected substring "
+        f"{expected_substring!r}"
+    )
+
+
+def test_bug5_existing_aliases_still_resolve(workforce_df):
+    """The new combined scorer should not regress short-abbreviation aliases
+    which were already handled by the static alias map."""
+    for alias, expected in [
+        ("CBA", "Commonwealth"),
+        ("NAB", "National Australia"),
+        ("ANZ", "Australia And New Zealand"),
+        ("Westpac", "Westpac"),
+        ("woolies", "Woolworths"),
+        ("Atlassian", "Atlassian"),
+    ]:
+        matched, _ = shaping.fuzzy_match_employer(workforce_df, "employer_name", alias)
+        assert any(expected.lower() in m.lower() for m in matched), (
+            f"alias {alias!r} should still resolve to {expected!r}; got {matched[:2]}"
+        )
+
+
 async def test_bug4_recent_results_lru_bounded(tmp_path):
     """The in-memory recent-results LRU must stay bounded."""
     call_count = 0
