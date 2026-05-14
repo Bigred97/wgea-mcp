@@ -11,9 +11,10 @@ requires-python = ">=3.11"
 license = { text = "MIT" }
 authors = [{ name = "Harry Vass" }]
 keywords = [
-    "mcp", "wgea", "gender", "pay-gap", "gender-equality", "australia",
-    "workforce", "diversity", "dei", "hr", "claude", "fastmcp",
-    "esg", "social-reporting",
+    "mcp", "model-context-protocol", "claude", "fastmcp",
+    "wgea", "gender", "pay-gap", "gender-equality", "workforce",
+    "diversity", "dei", "hr", "esg", "social-reporting",
+    "australia", "australian", "public-data", "government-data",
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -48,7 +49,11 @@ wgea-mcp = "wgea_mcp.server:main"
 
 [project.urls]
 Homepage = "https://github.com/Bigred97/wgea-mcp"
+Documentation = "https://github.com/Bigred97/wgea-mcp#readme"
+Repository = "https://github.com/Bigred97/wgea-mcp"
 Issues = "https://github.com/Bigred97/wgea-mcp/issues"
+Changelog = "https://github.com/Bigred97/wgea-mcp/blob/main/CHANGELOG.md"
+PyPI = "https://pypi.org/project/wgea-mcp/"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/wgea_mcp"]

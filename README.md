@@ -1,9 +1,10 @@
 # wgea-mcp
 
-[![tests](https://github.com/Bigred97/wgea-mcp/actions/workflows/test.yml/badge.svg)](https://github.com/Bigred97/wgea-mcp/actions/workflows/test.yml)
 [![PyPI](https://img.shields.io/pypi/v/wgea-mcp.svg)](https://pypi.org/project/wgea-mcp/)
 [![Python](https://img.shields.io/pypi/pyversions/wgea-mcp.svg)](https://pypi.org/project/wgea-mcp/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![License](https://img.shields.io/pypi/l/wgea-mcp.svg)](https://github.com/Bigred97/wgea-mcp/blob/main/LICENSE)
+[![Tests](https://github.com/Bigred97/wgea-mcp/actions/workflows/test.yml/badge.svg)](https://github.com/Bigred97/wgea-mcp/actions/workflows/test.yml)
+[![CodeQL](https://github.com/Bigred97/wgea-mcp/actions/workflows/codeql.yml/badge.svg)](https://github.com/Bigred97/wgea-mcp/actions/workflows/codeql.yml)
 [![Glama MCP server quality](https://glama.ai/mcp/servers/Bigred97/wgea-mcp/badges/score.svg)](https://glama.ai/mcp/servers/Bigred97/wgea-mcp)
 
 **MCP server for the Workplace Gender Equality Agency (WGEA) public data file.** Plain-English access to per-employer workforce composition, gender-equality policy answers, parental leave, flexible work, and harm-prevention data — every WGEA-reporting employer in Australia (~9,600 employers), every year, from a single `uvx` command.
@@ -113,16 +114,18 @@ Per-employer reporting is a deliberate disclosure under the Workplace Gender Equ
 
 ---
 
-## Sister packages
+## Sister MCPs (Australian Public Data portfolio)
 
-- [abs-mcp](https://github.com/Bigred97/abs-mcp) — ABS census + economic statistics
-- [rba-mcp](https://github.com/Bigred97/rba-mcp) — RBA F-tables (cash rate, FX rates, mortgage rates)
-- [ato-mcp](https://github.com/Bigred97/ato-mcp) — ATO tax statistics + ACNC charities register
-- [apra-mcp](https://github.com/Bigred97/apra-mcp) — banks, super funds, insurance
-- [aihw-mcp](https://github.com/Bigred97/aihw-mcp) — health and welfare statistics
-- [asic-mcp](https://github.com/Bigred97/asic-mcp) — corporate transparency + AFS licensees
+- [abs-mcp](https://pypi.org/project/abs-mcp/) — Australian Bureau of Statistics (CPI, unemployment, ERP, building approvals)
+- [rba-mcp](https://pypi.org/project/rba-mcp/) — Reserve Bank of Australia (cash rate, lending stats, exchange rates)
+- [ato-mcp](https://pypi.org/project/ato-mcp/) — Australian Taxation Office (tax stats, ACNC charities)
+- [apra-mcp](https://pypi.org/project/apra-mcp/) — Australian Prudential Regulation Authority (banking, insurance, super)
+- [aihw-mcp](https://pypi.org/project/aihw-mcp/) — Australian Institute of Health and Welfare
+- [asic-mcp](https://pypi.org/project/asic-mcp/) — Australian Securities and Investments Commission (company registers)
+- [aemo-mcp](https://pypi.org/project/aemo-mcp/) — Australian Energy Market Operator (NEM dispatch, spot prices, generation)
+- [au-weather-mcp](https://pypi.org/project/au-weather-mcp/) — Open-Meteo (Bureau of Meteorology aggregator)
 - **wgea-mcp** — this one. Workplace gender equality.
-- [au-weather-mcp](https://github.com/Bigred97/au-weather-mcp) — Australian weather
+- [aus-identity](https://pypi.org/project/aus-identity/) — Postcode / state / ABN normalisation helper used by all sisters
 
 ---
 
