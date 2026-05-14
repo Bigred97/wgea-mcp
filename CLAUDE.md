@@ -58,7 +58,11 @@ Repo-specific extras:
 
 ---
 
-## The 5-tool surface (uniform across sisters — non-negotiable)
+## The core 5-tool surface (uniform across sisters — mandatory)
+
+The 5 below are the uniform brand. Additional tools (e.g. `top_n`, `stats`) are
+allowed where the data shape genuinely needs them — they must use the same
+`Annotated[Field]` discipline and `DataResponse` envelope as the core 5.
 
 1. `search_datasets(query, limit)` — fuzzy search across the seven curated WGEA datasets
 2. `describe_dataset(dataset_id)` — dimensions + measures + source URL + current reporting year
@@ -121,7 +125,7 @@ on PyPI is bound to workflow `publish.yml`.
   pending-publisher is configured against the literal filename `publish.yml`;
   the rename would break OIDC auth on the next release. The sister repos
   use `release.yml` — wgea-mcp is the documented exception.
-- Don't add a 6th tool; uniform 5-tool surface is the brand
+- Don't add tools that duplicate or rename the core 5; their names/shapes are fixed. Extras are allowed only where the data shape genuinely needs them (e.g. `top_n`, `stats`) and must follow the same `Annotated[Field]` + `DataResponse` discipline
 - Don't add new top-level dependencies beyond what other sisters use (httpx, pydantic, fastmcp, aiosqlite, rapidfuzz, pyyaml, + pandas for parsing)
 - Don't bundle large XLSX/CSV fixtures in the wheel; cache at runtime. The bundled `tests/fixtures/wgea_sample.zip` is intentionally truncated to <50 KB.
 - Don't ship without 10 consecutive zero-flake pytest runs
