@@ -673,10 +673,28 @@ async def latest(
             ],
         ),
     ] = None,
+    limit: Annotated[
+        int | None,
+        Field(
+            description=(
+                "Cap on returned rows (portfolio-standard name). Default 2000, "
+                "max 10000. Mutually exclusive with the legacy `max_rows` "
+                "alias — supplying both raises ValueError."
+            ),
+            ge=1,
+            le=10_000,
+            examples=[100, 500, 2000],
+        ),
+    ] = None,
     max_rows: Annotated[
         int | None,
         Field(
-            description="Cap on returned rows. Default 2000, max 10000.",
+            description=(
+                "Legacy alias for `limit` — retained for backward compatibility "
+                "(wgea-mcp <= 0.4.x). Prefer `limit` for cross-sister consistency "
+                "with asic-mcp's `latest(..., limit)` parameter. Same semantics "
+                "as `limit`. Supplying both raises ValueError."
+            ),
             ge=1,
             le=10_000,
             examples=[100, 500, 2000],
@@ -693,9 +711,33 @@ async def latest(
         # Latest workforce composition at CBA
         resp = await latest("WORKFORCE_COMPOSITION",
                             filters={"employer_name": "Commonwealth Bank"})
+
+        # Cap rows (portfolio-standard name)
+        resp = await latest("WORKFORCE_COMPOSITION",
+                            filters={"anzsic_division": "Mining"}, limit=100)
+
+        # Legacy alias still works
+        resp = await latest("WORKFORCE_COMPOSITION",
+                            filters={"anzsic_division": "Mining"}, max_rows=100)
+
+    Parameter notes:
+        - Prefer `limit` (portfolio-standard; matches asic-mcp's
+          `latest(..., limit)` parameter).
+        - `max_rows` retained as legacy alias.
+        - Supplying both raises ValueError — pick one.
+        - `get_data()` keeps `max_rows` unchanged (separate surface, separate
+          concern).
     """
+    if limit is not None and max_rows is not None:
+        raise ValueError(
+            f"Use either limit or max_rows, not both. "
+            f"Got limit={limit!r} and max_rows={max_rows!r}. "
+            "limit is the portfolio-standard name; max_rows is retained as a "
+            "legacy alias."
+        )
+    effective_cap = limit if limit is not None else max_rows
     return await _get_data_impl(
-        dataset_id, filters, None, None, "records", max_rows, latest_only=True
+        dataset_id, filters, None, None, "records", effective_cap, latest_only=True
     )
 
 

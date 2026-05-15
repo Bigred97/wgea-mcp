@@ -177,3 +177,45 @@ async def test_period_swap_error_includes_format_hint():
             format="records",
         )
     assert "before start_period" in str(excinfo.value)
+
+
+# --- Wave 4: limit alias on latest() (portfolio interop) ---------------------
+#
+# wgea-mcp historically used `max_rows` on `latest()`. The portfolio standard
+# (asic-mcp uses `limit` on `latest()`) is `limit`. Both names accepted; new
+# canonical name added alongside. Supplying both raises ValueError.
+#
+# NOTE: `get_data(..., max_rows)` is intentionally LEFT ALONE — different
+# surface, different concern. The alias is `latest()`-only.
+
+
+async def test_latest_limit_alias_accepted():
+    """limit=5 on latest() must work — replaces max_rows for portfolio
+    consistency. Test relies on a fast offline path: an unknown dataset is
+    rejected before any data fetch, proving `limit` was wired through the
+    same code path as `max_rows`.
+    """
+    with pytest.raises(ValueError, match="not a curated"):
+        await server.latest(dataset_id="BOGUS_DATASET", limit=5)
+
+
+async def test_latest_max_rows_still_works():
+    """Regression — legacy `max_rows` must keep working unchanged."""
+    with pytest.raises(ValueError, match="not a curated"):
+        await server.latest(dataset_id="BOGUS_DATASET", max_rows=5)
+
+
+async def test_latest_both_limit_and_max_rows_raises():
+    """Mutually exclusive: pick one, not both."""
+    with pytest.raises(ValueError, match="Use either limit or max_rows"):
+        await server.latest(
+            dataset_id="WORKFORCE_COMPOSITION", limit=5, max_rows=10
+        )
+
+
+async def test_latest_neither_limit_nor_max_rows_uses_default():
+    """Default behaviour (neither supplied) — error is raised on the
+    bogus-dataset guard, NOT on the cap validation, proving the function
+    reached the impl with effective_cap=None."""
+    with pytest.raises(ValueError, match="not a curated"):
+        await server.latest(dataset_id="BOGUS_DATASET")

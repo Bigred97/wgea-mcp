@@ -5,6 +5,39 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-05-15
+
+### Added
+
+- **`limit` parameter on `latest()`** — additive, non-breaking alias for the
+  legacy `max_rows`. Wave 4 of the portfolio interoperability pass:
+  asic-mcp's `latest(..., limit)` is the portfolio-standard row-cap
+  parameter for register-style data; wgea-mcp now accepts the same name so
+  cross-sister calling patterns match. Same semantics, same default
+  (`None` → 2000), same hard cap (10000). Supplying both `limit` and
+  `max_rows` raises `ValueError` with a "Use either X or Y, not both"
+  hint. `max_rows` continues to work unchanged.
+
+  ```python
+  # New canonical name (preferred)
+  await latest("WORKFORCE_COMPOSITION", filters={"anzsic_division": "Mining"}, limit=100)
+
+  # Legacy alias (still works)
+  await latest("WORKFORCE_COMPOSITION", filters={"anzsic_division": "Mining"}, max_rows=100)
+  ```
+
+  `get_data(..., max_rows)` is intentionally LEFT UNCHANGED. It's a
+  different surface (post-filter cap on a multi-year query, not the
+  single-reporting-year register cap), and the audit recommendation was
+  scoped to `latest()` only.
+
+- **+4 regression tests** in `test_server_validation.py` locking in the
+  alias contract: limit accepted, max_rows still works, both raises,
+  neither still defaults.
+
+- 190 unit tests now (was 186). 10x zero-flake green. Ruff clean.
+- No new dependencies. No envelope changes.
+
 ## [0.4.0] - 2026-05-15
 
 ### Added

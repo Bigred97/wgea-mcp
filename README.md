@@ -54,7 +54,7 @@ Six tools, all plain-English in, structured out:
 | `search_datasets`   | Fuzzy-search the curated catalog by keyword                   |
 | `describe_dataset`  | List a dataset's filterable dimensions and returnable measures |
 | `get_data`          | Query with `filters`, period range, output format             |
-| `latest`            | Restrict to the latest reporting year                         |
+| `latest`            | Restrict to the latest reporting year. Row cap parameter is `limit` (portfolio-standard); `max_rows` retained as legacy alias. |
 | `top_n`             | Rank rows by a numeric measure (e.g. `n_employees`) and return the top (or bottom) N for one reporting year. |
 | `list_curated`      | Enumerate the curated dataset IDs                             |
 
