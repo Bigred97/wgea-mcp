@@ -700,6 +700,198 @@ async def latest(
 
 
 @mcp.tool
+async def top_n(
+    dataset_id: Annotated[
+        str,
+        Field(
+            description="Curated dataset ID. Use search_datasets() / list_curated().",
+            examples=[
+                "WORKFORCE_COMPOSITION",
+                "WORKFORCE_MANAGEMENT",
+                "GENDER_EQUALITY_ACTIONS",
+                "PARENTAL_LEAVE_FLEX",
+                "HARM_PREVENTION",
+            ],
+        ),
+    ],
+    measure: Annotated[
+        str,
+        Field(
+            description=(
+                "Numeric measure column to rank by. WGEA measures are "
+                "`n_employees` (WORKFORCE_COMPOSITION, WORKFORCE_MANAGEMENT) "
+                "or `n_responses` (the other five questionnaire datasets). "
+                "Use describe_dataset() to confirm."
+            ),
+            examples=["n_employees", "n_responses"],
+        ),
+    ],
+    n: Annotated[
+        int,
+        Field(
+            description="How many top (or bottom) rows to return.",
+            ge=1,
+            le=100,
+            examples=[5, 10, 20, 50],
+        ),
+    ] = 10,
+    filters: Annotated[
+        dict[str, Any] | None,
+        Field(
+            description="Optional dimension filters, same shape as get_data.",
+            examples=[
+                {"gender": "Women", "manager_category": "Manager"},
+                {"anzsic_division": "Mining"},
+                {"section": "Gender Pay Gap", "response": "Yes"},
+            ],
+        ),
+    ] = None,
+    direction: Annotated[
+        Literal["top", "bottom"],
+        Field(
+            description=(
+                "'top' returns the N rows with the LARGEST measure values "
+                "(highest n_employees, biggest n_responses, etc.). "
+                "'bottom' returns the SMALLEST."
+            ),
+            examples=["top", "bottom"],
+        ),
+    ] = "top",
+    reporting_year: Annotated[
+        str | int | None,
+        Field(
+            description=(
+                "Optional single WGEA reporting year to restrict the ranking "
+                "to. Format: 'YYYY-YY' (e.g. '2024-25') or 'YYYY' (e.g. "
+                "'2024'). Defaults to the latest reporting year present in "
+                "the data so the rank is a clean 'top N at the current "
+                "reporting year' view."
+            ),
+            examples=["2024-25", "2023-24", "2024", 2024],
+        ),
+    ] = None,
+) -> DataResponse:
+    """Return the N rows with the largest (or smallest) value of a measure.
+
+    Ranks across one WGEA reporting year (the latest by default, or a
+    specific year via `reporting_year=`). This is the most common agent
+    workflow — "show me the top 10 X by Y" — collapsed into a single
+    server-side call: rank-and-slice happens on the server so the agent
+    never has to fetch a full table just to take the top of it.
+
+    Examples:
+        # 10 employers with the most women managers (latest reporting year)
+        top_n("WORKFORCE_COMPOSITION", "n_employees", n=10,
+              filters={"gender": "Women", "manager_category": "Manager"})
+
+        # 5 ANZSIC divisions with the fewest Yes responses on Gender Pay Gap
+        top_n("GENDER_EQUALITY_ACTIONS", "n_responses", n=5, direction="bottom",
+              filters={"section": "Gender Pay Gap", "response": "Yes"})
+
+        # Top 5 employers in Mining by total workforce in 2023-24
+        top_n("WORKFORCE_COMPOSITION", "n_employees", n=5,
+              filters={"anzsic_division": "Mining"},
+              reporting_year="2023-24")
+
+    Returns:
+        DataResponse with at most `n` records, sorted by `measure` value
+        in the requested direction. Other fields (reporting_year, unit,
+        attribution) match a regular get_data call.
+    """
+    # Validate inputs that pydantic's runtime can't enforce strictly when
+    # the function is called directly (Literal/ge/le are type-checker-only
+    # in some FastMCP code paths).
+    if not isinstance(measure, str) or not measure.strip():
+        raise ValueError(
+            "measure is required and must be a non-empty string. "
+            "Example: top_n('WORKFORCE_COMPOSITION', 'n_employees', n=10). "
+            "Try describe_dataset(<id>) to see available measure keys."
+        )
+    if isinstance(n, bool) or not isinstance(n, int):
+        raise ValueError(
+            f"n must be a positive integer (1-100), got {n!r} ({type(n).__name__}). "
+            "Try n=10 (default) or n=5. Valid range: 1-100."
+        )
+    if n < 1:
+        raise ValueError(
+            f"n must be >= 1, got {n}. "
+            "Try n=10 (default) or n=5. Valid range: 1-100."
+        )
+    if n > 100:
+        raise ValueError(
+            f"n must be <= 100, got {n}. "
+            "Try n=10 (default) or n=50. Valid range: 1-100."
+        )
+    if direction not in ("top", "bottom"):
+        valid = ["top", "bottom"]
+        suggestion = _fuzzy_suggest(str(direction).lower(), valid, cutoff=60)
+        suggest_msg = f"Did you mean {suggestion!r}? " if suggestion else ""
+        raise ValueError(
+            f"direction must be 'top' or 'bottom', got {direction!r}. "
+            f"{suggest_msg}"
+            "Try direction='top' (default, largest values first) or "
+            "direction='bottom' (smallest values first)."
+        )
+
+    norm_id = _normalize_dataset_id(dataset_id)
+    cd = curated.get(norm_id)
+    if cd is None:
+        raise ValueError(_unknown_dataset_msg(dataset_id))
+    measure_key = measure.strip()
+    measure_keys = [c.key for c in curated.measure_columns(cd)]
+    if measure_key not in measure_keys:
+        suggestion = _fuzzy_suggest(measure_key, measure_keys, cutoff=60)
+        suggest_msg = f"Did you mean {suggestion!r}? " if suggestion else ""
+        raise ValueError(
+            f"Unknown measure {measure!r} for dataset {norm_id!r}. "
+            f"{suggest_msg}"
+            f"Valid measures: {', '.join(sorted(measure_keys))}. "
+            f"See describe_dataset({norm_id!r}) for the full schema."
+        )
+
+    # Validate `reporting_year` separately from start_period/end_period — it
+    # uses the same WGEA YYYY-YY / YYYY shape but is treated as a single-year
+    # restriction (both bounds set to this value).
+    year_v = _validate_period(reporting_year, "reporting_year")
+
+    # Pull all rows for the dataset (optionally filtered by reporting_year),
+    # then rank server-side. Setting both start and end to the same year is
+    # the WGEA-canonical way to slice to a single reporting year.
+    if year_v is not None:
+        start_v: str | None = year_v
+        end_v: str | None = year_v
+        latest_only_flag = False
+    else:
+        # Default: latest reporting year only (cheap-cache discovery path
+        # already picks the freshest year — match its behaviour).
+        start_v = None
+        end_v = None
+        latest_only_flag = True
+
+    full = await _get_data_impl(
+        norm_id,
+        filters,
+        start_v,
+        end_v,
+        "records",
+        max_rows=_HARD_MAX_ROWS,
+        measures=measure_key,
+        latest_only=latest_only_flag,
+    )
+    valid_records = [
+        r for r in full.records
+        if getattr(r, "value", None) is not None
+    ]
+    valid_records.sort(
+        key=lambda r: r.value,  # type: ignore[union-attr,return-value]
+        reverse=(direction == "top"),
+    )
+    top = valid_records[:n]
+    # Preserve the response envelope; replace records and row_count.
+    return full.model_copy(update={"records": top, "row_count": len(top)})
+
+
+@mcp.tool
 def list_curated() -> list[str]:
     """List every curated dataset ID in this version of wgea-mcp.
 

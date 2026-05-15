@@ -47,7 +47,7 @@ claude mcp add wgea --command uvx --args -- --upgrade wgea-mcp
 
 ## What it exposes
 
-Five tools, all plain-English in, structured out:
+Six tools, all plain-English in, structured out:
 
 | Tool                | Purpose                                                       |
 |---------------------|---------------------------------------------------------------|
@@ -55,6 +55,7 @@ Five tools, all plain-English in, structured out:
 | `describe_dataset`  | List a dataset's filterable dimensions and returnable measures |
 | `get_data`          | Query with `filters`, period range, output format             |
 | `latest`            | Restrict to the latest reporting year                         |
+| `top_n`             | Rank rows by a numeric measure (e.g. `n_employees`) and return the top (or bottom) N for one reporting year. |
 | `list_curated`      | Enumerate the curated dataset IDs                             |
 
 Every response is the same shape — `dataset_id`, `dataset_name`, `query`, `reporting_year`, `unit`, `row_count`, `records`, `source_url`, `download_url`, `did_you_mean`, `attribution`, `stale` flag, `server_version`.

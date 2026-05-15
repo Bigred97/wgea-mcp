@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-05-15
+
+### Added
+
+- **`top_n` tool** — rank rows by a numeric measure and return the top
+  (or bottom) N. Wave 3 of the portfolio interoperability pass; signature
+  matches aihw-mcp / apra-mcp / ato-mcp so an agent that learned `top_n`
+  on one sister uses it identically here:
+
+  ```python
+  top_n(dataset_id, measure, n=10, filters=None,
+        direction="top", reporting_year=None)
+  ```
+
+  WGEA adds an optional `reporting_year=` parameter — since the source data
+  is annual, the rank should be scoped to a single year. Default is the
+  latest reporting year (current behaviour of `latest()`); pass
+  `reporting_year="2023-24"` to rank an earlier release.
+
+  Common workflows:
+  - "10 employers with the most women managers" →
+    `top_n("WORKFORCE_COMPOSITION", "n_employees", n=10, filters={"gender": "Women", "manager_category": "Manager"})`
+  - "5 ANZSIC divisions with the fewest Yes responses on Gender Pay Gap" →
+    `top_n("GENDER_EQUALITY_ACTIONS", "n_responses", n=5, direction="bottom", filters={"section": "Gender Pay Gap", "response": "Yes"})`
+
 ## [0.3.0] - 2026-05-15
 
 ### Added
