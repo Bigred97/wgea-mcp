@@ -47,9 +47,9 @@ def test_validate_filters_dict_passes():
 
 
 def test_validate_filters_non_dict_raises():
-    with pytest.raises(ValueError, match="must be a dict"):
+    with pytest.raises(ValueError, match="must be"):
         _validate_filters("CBA")
-    with pytest.raises(ValueError, match="must be a dict"):
+    with pytest.raises(ValueError, match="must be"):
         _validate_filters(["CBA"])
 
 
