@@ -66,12 +66,19 @@ _df_cache: OrderedDict[tuple, pd.DataFrame] = OrderedDict()
 _df_cache_lock = asyncio.Lock()
 
 # Datasets for which we apply the streaming/early-exit fast path on cold
-# calls with a `max_rows` cap. These are the two whose full-parse cost
+# calls with a `max_rows` cap. These are the four whose full-parse cost
 # was customer-blocking the hosted API (workforce_composition: 56 MB / 211k
-# rows / ~5s parse; employee_support: 154 MB / 332k rows / ~13s parse).
-# The other 5 WGEA CSVs are unaffected — they keep the existing full-parse
-# + df-cache path so warm repeat queries stay sub-50ms.
-_STREAMING_DATASETS = frozenset({"WORKFORCE_COMPOSITION", "EMPLOYEE_SUPPORT"})
+# rows / ~5s parse; employee_support: 154 MB / 332k rows / ~13s parse;
+# gender_equality_actions: 77 MB / hundreds of thousands of rows;
+# workforce_management: 235k rows). The other 3 WGEA CSVs are unaffected —
+# they keep the existing full-parse + df-cache path so warm repeat queries
+# stay sub-50ms.
+_STREAMING_DATASETS = frozenset({
+    "WORKFORCE_COMPOSITION",
+    "EMPLOYEE_SUPPORT",
+    "GENDER_EQUALITY_ACTIONS",
+    "WORKFORCE_MANAGEMENT",
+})
 
 
 def reset_df_cache_for_tests() -> None:

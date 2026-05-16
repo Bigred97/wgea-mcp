@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.3] - 2026-05-16
+
+### Performance
+
+- Extended the streaming/early-exit path to `GENDER_EQUALITY_ACTIONS` and
+  `WORKFORCE_MANAGEMENT` (same fix as 0.5.2 for WORKFORCE_COMPOSITION and
+  EMPLOYEE_SUPPORT). 4 of 7 wgea datasets now use the streaming path —
+  the user's live LLM-workflow testing against `ausdata-api` was hitting
+  timeouts on these two datasets at the gateway's 20s budget. Cold
+  `limit=2` calls now short-circuit at parse time (rows_walked = max_rows + 1)
+  instead of paying the full pandas-parse cost. The other 3 datasets
+  (`PARENTAL_LEAVE_FLEX`, `HARM_PREVENTION`, `WORKPLACE_OVERVIEW`) keep
+  the existing full-parse + parsed-DataFrame cache path — they're small
+  enough that the warm-cache path was already meeting the budget.
+
+### Added
+
+- 2 regression tests in `test_bug_regression.py`:
+  `test_gender_equality_actions_limit_short_circuits`,
+  `test_workforce_management_limit_short_circuits`.
+- Updated `test_streaming_other_datasets_unaffected` to assert the 3
+  non-streaming datasets (was 5, now 3) still use the full-parse path.
+
+201 unit tests now (was 199). 10x zero-flake green. Ruff clean.
+No new dependencies. No envelope changes.
+
 ## [0.5.2] - 2026-05-16
 
 ### Performance — `WORKFORCE_COMPOSITION` + `EMPLOYEE_SUPPORT` lazy-stream fix

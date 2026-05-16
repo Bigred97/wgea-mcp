@@ -435,20 +435,75 @@ async def test_employee_support_limit_short_circuits(monkeypatch):
         await server.reset_client_for_tests()
 
 
+async def test_gender_equality_actions_limit_short_circuits(monkeypatch):
+    """`get_data('GENDER_EQUALITY_ACTIONS', max_rows=2)` — questionnaire dataset
+    (77 MB / hundreds of thousands of rows in the 2024-25 release). Same
+    short-circuit + timeout requirements as the 0.5.2 fix for WORKFORCE_COMPOSITION
+    and EMPLOYEE_SUPPORT.
+    """
+    import time
+
+    from wgea_mcp import server
+
+    seen = _make_streaming_fixture(monkeypatch)
+    t0 = time.time()
+    try:
+        resp = await server.get_data("GENDER_EQUALITY_ACTIONS", max_rows=2)
+        elapsed = time.time() - t0
+        assert resp.row_count == 2, f"expected 2 rows, got {resp.row_count}"
+        rows_walked = next(iter(seen.values())) if seen else 0
+        assert rows_walked <= 5, (
+            f"streaming did not short-circuit — walked {rows_walked} rows "
+            f"for limit=2 (should be <=5)"
+        )
+        assert elapsed < 5.0, (
+            f"limit=2 on GENDER_EQUALITY_ACTIONS took {elapsed:.2f}s "
+            f"(must be <5s — was the customer-blocking failure mode)"
+        )
+    finally:
+        await server.reset_client_for_tests()
+
+
+async def test_workforce_management_limit_short_circuits(monkeypatch):
+    """`get_data('WORKFORCE_MANAGEMENT', max_rows=2)` — wide manager-movement
+    dataset (~235k rows in the 2024-25 release). Same short-circuit + timeout
+    requirements as the 0.5.2 fix for WORKFORCE_COMPOSITION and EMPLOYEE_SUPPORT.
+    """
+    import time
+
+    from wgea_mcp import server
+
+    seen = _make_streaming_fixture(monkeypatch)
+    t0 = time.time()
+    try:
+        resp = await server.get_data("WORKFORCE_MANAGEMENT", max_rows=2)
+        elapsed = time.time() - t0
+        assert resp.row_count == 2, f"expected 2 rows, got {resp.row_count}"
+        rows_walked = next(iter(seen.values())) if seen else 0
+        assert rows_walked <= 5, (
+            f"streaming did not short-circuit — walked {rows_walked} rows "
+            f"for limit=2 (should be <=5)"
+        )
+        assert elapsed < 5.0, (
+            f"limit=2 on WORKFORCE_MANAGEMENT took {elapsed:.2f}s "
+            f"(must be <5s — was the customer-blocking failure mode)"
+        )
+    finally:
+        await server.reset_client_for_tests()
+
+
 async def test_streaming_other_datasets_unaffected(monkeypatch):
-    """The other 5 WGEA datasets must NOT enter the streaming path — they
-    use the full-parse-and-cache path which is correct + fast on warm calls.
+    """The 3 non-streaming WGEA datasets must NOT enter the streaming path —
+    they use the full-parse-and-cache path which is correct + fast on warm calls.
     """
     from wgea_mcp import server
 
     # Same fixture stubbing, but with a stream-counter that fails if invoked
-    # for any of the 5 non-streaming datasets.
+    # for any of the 3 non-streaming datasets.
     seen = _make_streaming_fixture(monkeypatch)
     untouched = (
-        "GENDER_EQUALITY_ACTIONS",
         "HARM_PREVENTION",
         "PARENTAL_LEAVE_FLEX",
-        "WORKFORCE_MANAGEMENT",
         "WORKPLACE_OVERVIEW",
     )
     try:
