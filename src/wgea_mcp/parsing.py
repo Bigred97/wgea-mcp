@@ -16,11 +16,20 @@ a DataFrame. The member_pattern is a regex applied to filenames inside
 the ZIP — this means curated YAMLs can declare a year-agnostic pattern
 ("wgea_workforce_composition_") that resolves to the actual year-suffixed
 filename at runtime.
+
+`stream_csv_from_zip(...)` is the limit-pushed-down variant: it iterates
+rows with `csv.reader` and stops as soon as `max_rows` matching rows have
+been collected. Used for the two largest CSVs (workforce_composition,
+employee_support) where the full pandas parse is the timeout cost a
+`limit=2`-style query was paying for.
 """
 from __future__ import annotations
 
+import csv
+import io
 import re
 import zipfile
+from collections.abc import Callable
 from io import BytesIO
 
 import pandas as pd
@@ -126,6 +135,101 @@ def read_csv_from_zip(
         raise ParseError(f"pandas could not parse {member!r}: {e}") from e
 
     df.columns = [_normalize_header(c) for c in df.columns]
+    return df
+
+
+def stream_csv_from_zip(
+    zip_bytes: bytes,
+    member_pattern: str,
+    *,
+    max_rows: int,
+    row_predicate: Callable[[dict[str, str]], bool] | None = None,
+) -> pd.DataFrame:
+    """Stream-parse a CSV member from a WGEA ZIP, applying a row predicate.
+
+    Iterates rows with the stdlib `csv.reader` (no pandas) and breaks out
+    as soon as `max_rows` rows have been accepted by `row_predicate`. Used
+    by the server's fast path for the two largest WGEA CSVs
+    (workforce_composition + employee_support) when a caller specifies
+    `max_rows` — previously the cold call was paying the full 5-15s
+    pandas parse cost regardless of how few rows the caller wanted.
+
+    Args:
+        zip_bytes: raw bytes of the ZIP file (as fetched from data.gov.au).
+        member_pattern: filename or regex/prefix that matches one CSV inside
+            the ZIP (same semantics as `read_csv_from_zip`).
+        max_rows: hard cap on accepted rows. Required — the whole point of
+            this function is bounded reading. Must be >= 1.
+        row_predicate: optional callable(dict[str, str]) -> bool. The dict
+            is the row keyed by source column name (values are str). When
+            None, all rows match.
+
+    Returns:
+        DataFrame whose columns are the source CSV headers (normalised).
+        Dtypes default to pandas inference applied to the small accumulated
+        list — so an `n_employees` column lands as int64 like the full-parse
+        path. The DataFrame has at most `max_rows` rows.
+
+    Raises:
+        ParseError on corrupt ZIP, missing member, or unreadable CSV.
+        ValueError if `max_rows` < 1.
+    """
+    if max_rows is None or max_rows < 1:
+        raise ValueError(
+            f"stream_csv_from_zip requires max_rows >= 1, got {max_rows!r}. "
+            "Use read_csv_from_zip for unbounded reads."
+        )
+    member = _resolve_member(zip_bytes, member_pattern)
+    try:
+        with zipfile.ZipFile(BytesIO(zip_bytes)) as zf:
+            with zf.open(member) as raw_fp:
+                text_fp = io.TextIOWrapper(raw_fp, encoding="utf-8", newline="")
+                reader = csv.reader(text_fp)
+                try:
+                    headers = next(reader)
+                except StopIteration as e:
+                    raise ParseError(
+                        f"CSV member {member!r} is empty (no header row)."
+                    ) from e
+                headers = [_normalize_header(h) for h in headers]
+                n_cols = len(headers)
+                collected: list[list[str | None]] = []
+                for row in reader:
+                    # Tolerate ragged rows: pad with None or truncate to header width.
+                    if len(row) < n_cols:
+                        row = row + [None] * (n_cols - len(row))  # type: ignore[list-item]
+                    elif len(row) > n_cols:
+                        row = row[:n_cols]
+                    if row_predicate is not None:
+                        row_dict = dict(zip(headers, row, strict=False))
+                        if not row_predicate(row_dict):
+                            continue
+                    collected.append(row)
+                    if len(collected) >= max_rows:
+                        break
+    except (zipfile.BadZipFile, OSError, UnicodeDecodeError) as e:
+        raise ParseError(
+            f"could not read {member!r} from ZIP (corrupt or truncated): {e}"
+        ) from e
+    except csv.Error as e:
+        raise ParseError(f"csv could not parse {member!r}: {e}") from e
+
+    if not collected:
+        # Return an empty DataFrame with the same columns so the downstream
+        # shaping pipeline still has a well-formed input.
+        return pd.DataFrame(columns=headers)
+    df = pd.DataFrame(collected, columns=headers)
+    # Mirror pandas' default behaviour from read_csv: numeric-looking columns
+    # become numeric. apply per-column to_numeric with errors='ignore' so
+    # string columns survive intact.
+    for col in df.columns:
+        coerced = pd.to_numeric(df[col], errors="coerce")
+        # Only swap if the entire (non-null) column converted cleanly — that's
+        # what pandas' inference would have decided on the original parse.
+        non_null_in = df[col].notna() & (df[col] != "")
+        non_null_out = coerced.notna()
+        if non_null_in.any() and (non_null_in == non_null_out).all():
+            df[col] = coerced
     return df
 
 

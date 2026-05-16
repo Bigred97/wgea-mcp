@@ -5,6 +5,47 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.2] - 2026-05-16
+
+### Performance — `WORKFORCE_COMPOSITION` + `EMPLOYEE_SUPPORT` lazy-stream fix
+
+The two largest WGEA CSVs (56 MB / 154 MB uncompressed) were timing out
+at the hosted API's 20s budget even for `limit=2` requests: the cold call
+was paying the full ~5-13s pandas parse before any row truncation
+happened. Fix: stream rows from the cached ZIP with `csv.reader` and
+short-circuit at `max_rows + 1` (the `+1` keeps the truncation signal
+intact so `DataResponse.truncated_at` still tells agents the cap was
+hit). Filters that the streaming path can push down as simple equality
+predicates (`gender=Women`, `anzsic_division=Mining`, `is_relevant_employer=true`,
+etc.) are applied per-row at parse time. Fuzzy/wildcard filters
+(`employer_name=CBA`, `subsection=Sexual*`) fall back to the existing
+full-parse + cache path, so rapidfuzz and the alias map keep working
+correctly.
+
+Cold-call timings on the customer's blocking workload (`limit=2`):
+- WORKFORCE_COMPOSITION: 5-12s → 0.1-0.3s
+- EMPLOYEE_SUPPORT: 13-17s → 0.1-0.3s
+
+The other 5 WGEA datasets (`WORKFORCE_MANAGEMENT`, `GENDER_EQUALITY_ACTIONS`,
+`PARENTAL_LEAVE_FLEX`, `HARM_PREVENTION`, `WORKPLACE_OVERVIEW`) are
+unaffected — they keep the existing full-parse + parsed-DataFrame cache
+path which is already correct and fast on warm calls.
+
+### Added
+
+- `parsing.stream_csv_from_zip(zip_bytes, member_pattern, *, max_rows, row_predicate)`
+  — stdlib-only streaming CSV reader from a ZIP member with early-exit.
+- 4 regression tests in `test_bug_regression.py`:
+  `test_workforce_composition_limit_short_circuits`,
+  `test_employee_support_limit_short_circuits`,
+  `test_streaming_other_datasets_unaffected`,
+  `test_streaming_with_fuzzy_filter_falls_back_to_full_parse`.
+- 6 unit tests in `test_parsing.py` covering the streaming function
+  (short-circuit, predicate, max_rows guard, empty result, dtype inference).
+
+199 unit tests now (was 189). 10x zero-flake green. Ruff clean.
+No new dependencies. No envelope changes.
+
 ## [0.5.1] - 2026-05-16
 
 ### Fixed — JSON-string `filters` parameter (portfolio-wide)

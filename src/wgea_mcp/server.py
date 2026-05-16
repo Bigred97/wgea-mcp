@@ -39,7 +39,7 @@ from .models import (
     DatasetDetail,
     DatasetSummary,
 )
-from .parsing import drop_blank_rows, read_csv_from_zip
+from .parsing import drop_blank_rows, read_csv_from_zip, stream_csv_from_zip
 from .shaping import build_response
 
 # Curated IDs are uppercase letters + digits + underscore.
@@ -64,6 +64,14 @@ _client_lock = asyncio.Lock()
 _DF_CACHE_MAX_ENTRIES = 8
 _df_cache: OrderedDict[tuple, pd.DataFrame] = OrderedDict()
 _df_cache_lock = asyncio.Lock()
+
+# Datasets for which we apply the streaming/early-exit fast path on cold
+# calls with a `max_rows` cap. These are the two whose full-parse cost
+# was customer-blocking the hosted API (workforce_composition: 56 MB / 211k
+# rows / ~5s parse; employee_support: 154 MB / 332k rows / ~13s parse).
+# The other 5 WGEA CSVs are unaffected — they keep the existing full-parse
+# + df-cache path so warm repeat queries stay sub-50ms.
+_STREAMING_DATASETS = frozenset({"WORKFORCE_COMPOSITION", "EMPLOYEE_SUPPORT"})
 
 
 def reset_df_cache_for_tests() -> None:
@@ -208,13 +216,11 @@ def _validate_period(value: Any, field_name: str) -> str | None:
     return s
 
 
-async def _fetch_and_parse(
+async def _fetch_zip_body(
     cd: curated.CuratedDataset,
-) -> tuple[pd.DataFrame, str, str, bool, str | None]:
-    """Resolve URL, fetch ZIP bytes, extract CSV, parse to DataFrame.
-
-    Returns (df, zip_url, reporting_year_label, stale, stale_reason).
-    """
+) -> tuple[bytes, str, str, bool, str | None, tuple]:
+    """Resolve URL, fetch ZIP bytes. Returns (body, url, year_label, stale,
+    stale_reason, df_cache_key). Network + discovery only — no CSV parse."""
     client = await _get_client()
     try:
         resolved = await resolve_latest_zip(client)
@@ -235,6 +241,26 @@ async def _fetch_and_parse(
     tail = body[-2048:] if len(body) > 8192 else b""
     body_sig = hashlib.sha256(head + tail).digest()
     cache_key = (resolved.url, cd.id, cd.zip_member, len(body), body_sig)
+    return (
+        body,
+        resolved.url,
+        resolved.reporting_year_label,
+        resolved.stale,
+        resolved.reason,
+        cache_key,
+    )
+
+
+async def _fetch_and_parse(
+    cd: curated.CuratedDataset,
+) -> tuple[pd.DataFrame, str, str, bool, str | None]:
+    """Resolve URL, fetch ZIP bytes, extract CSV, parse to full DataFrame.
+
+    Returns (df, zip_url, reporting_year_label, stale, stale_reason).
+    Caches the parsed DataFrame so subsequent warm calls (irrespective of
+    filters) return in ~50ms.
+    """
+    body, url, year_label, stale, stale_reason, cache_key = await _fetch_zip_body(cd)
 
     async with _df_cache_lock:
         cached = _df_cache.get(cache_key)
@@ -242,10 +268,10 @@ async def _fetch_and_parse(
             _df_cache.move_to_end(cache_key)
             return (
                 cached,
-                resolved.url,
-                resolved.reporting_year_label,
-                resolved.stale,
-                resolved.reason,
+                url,
+                year_label,
+                stale,
+                stale_reason,
             )
 
     df = read_csv_from_zip(body, cd.zip_member)
@@ -265,11 +291,177 @@ async def _fetch_and_parse(
 
     return (
         df,
-        resolved.url,
-        resolved.reporting_year_label,
-        resolved.stale,
-        resolved.reason,
+        url,
+        year_label,
+        stale,
+        stale_reason,
     )
+
+
+def _can_pushdown_filters(cd: curated.CuratedDataset, filters: dict[str, Any]) -> bool:
+    """True if every filter is a simple equality match on a non-fuzzy column.
+
+    The streaming fast path skips rapidfuzz / wildcard / list-with-alias
+    expansion so it doesn't ship correctness regressions on the warm path.
+    For complex filters we fall back to the full-parse path (still cached
+    after the first call) — those filter shapes are rare on the customer-
+    blocking limit=2 / limit=50 calls this fix is targeting.
+    """
+    if not filters:
+        return True
+    valid_dim_keys = {
+        c.key for c in cd.columns.values() if c.role in ("dimension", "id")
+    }
+    for user_key, user_val in filters.items():
+        if user_key not in valid_dim_keys:
+            return False
+        # Fuzzy columns must run through rapidfuzz against the full set of
+        # distinct employer names — can't push that down to row iteration.
+        if user_key in ("employer_name", "corporate_group_name"):
+            return False
+        if user_val is None:
+            return False
+        if isinstance(user_val, list):
+            # Multi-value lists are translated row-side; safe to push down
+            # if no entry triggers wildcard / alias logic.
+            for v in user_val:
+                if v is None:
+                    return False
+                v_str = str(v).strip()
+                if "*" in v_str or "~" in v_str:
+                    return False
+        else:
+            v_str = str(user_val).strip()
+            if "*" in v_str or "~" in v_str:
+                return False
+    return True
+
+
+def _build_row_predicate(
+    cd: curated.CuratedDataset,
+    filters: dict[str, Any],
+    period_column: str | None,
+    period_value: str | None,
+    start_period: str | None,
+    end_period: str | None,
+) -> Any:
+    """Return a row_predicate(dict) -> bool for stream_csv_from_zip.
+
+    Filters are translated through `curated.translate_filter_value` so user
+    aliases ('women' -> 'Women') still resolve. Period filtering is applied
+    using lexical string compare against `period_column` (WGEA reporting-year
+    labels sort correctly as strings). Returns None when there are no
+    predicates to enforce (fastest path: just take the first max_rows rows).
+    """
+    # Translate each filter to a set of source-column accepted values.
+    # The streaming parser sees raw string cell values, so we compare strings.
+    expected: dict[str, set[str]] = {}
+    for user_key, user_val in (filters or {}).items():
+        col_def = cd.columns.get(user_key)
+        if col_def is None:
+            # Defensive: caller should have filtered these out via _can_pushdown_filters.
+            return _PREDICATE_REJECT_ALL
+        source_col = col_def.source_column
+        if isinstance(user_val, list):
+            translated = {
+                curated.translate_filter_value(cd, user_key, str(v).strip())
+                for v in user_val
+            }
+        else:
+            translated = {
+                curated.translate_filter_value(cd, user_key, str(user_val).strip())
+            }
+        # Store as strings; compare to the raw CSV cell value (also a string).
+        expected[source_col] = {str(v) for v in translated}
+
+    do_period_filter = bool(
+        period_column and (period_value or start_period or end_period)
+    )
+    if not expected and not do_period_filter:
+        return None
+
+    def predicate(row: dict[str, str]) -> bool:
+        if do_period_filter:
+            cell = row.get(period_column, "")
+            cell_s = cell if isinstance(cell, str) else "" if cell is None else str(cell)
+            if period_value is not None and cell_s != period_value:
+                return False
+            if start_period is not None and cell_s < start_period:
+                return False
+            if end_period is not None and cell_s > end_period:
+                return False
+        for source_col, accepted in expected.items():
+            cell = row.get(source_col, "")
+            cell_s = cell if isinstance(cell, str) else "" if cell is None else str(cell)
+            if cell_s not in accepted:
+                return False
+        return True
+
+    return predicate
+
+
+def _PREDICATE_REJECT_ALL(_row: dict[str, str]) -> bool:  # noqa: N802
+    return False
+
+
+async def _fetch_and_parse_streaming(
+    cd: curated.CuratedDataset,
+    *,
+    max_rows: int,
+    filters: dict[str, Any],
+    start_period: str | None,
+    end_period: str | None,
+    latest_only: bool,
+) -> tuple[pd.DataFrame, str, str, bool, str | None]:
+    """Fast-path fetch+parse for the largest CSVs: stream rows, push down
+    `max_rows` and equality filters, short-circuit on cap.
+
+    Returns the same (df, url, year_label, stale, stale_reason) shape as
+    `_fetch_and_parse`. The DataFrame has source-column headers (renaming
+    to plain-English aliases happens in shaping.build_response).
+
+    Bypasses the parsed-DataFrame cache: the result depends on filters and
+    is request-specific. The ZIP byte cache (SQLite) and the in-process
+    body LRU still amortise the ~71 MB network fetch across calls.
+    """
+    body, url, year_label, stale, stale_reason, cache_key = await _fetch_zip_body(cd)
+
+    # If the warm DF cache already has the full parse, skip streaming — at
+    # this point an in-memory pandas .loc slice is faster than reparsing
+    # the CSV bytes. The caller (`_get_data_impl`) only enters this branch
+    # when the cache miss is the bottleneck.
+    async with _df_cache_lock:
+        cached = _df_cache.get(cache_key)
+        if cached is not None:
+            _df_cache.move_to_end(cache_key)
+            return (cached, url, year_label, stale, stale_reason)
+
+    period_value = year_label if latest_only else None
+    predicate = _build_row_predicate(
+        cd,
+        filters,
+        cd.period_column,
+        period_value,
+        start_period,
+        end_period,
+    )
+    # Read +1 so build_response can populate truncated_at when the post-filter
+    # population is larger than max_rows (lets agents detect the cap was hit).
+    streaming_cap = max_rows + 1
+    df = stream_csv_from_zip(
+        body,
+        cd.zip_member,
+        max_rows=streaming_cap,
+        row_predicate=predicate,
+    )
+
+    dim_source_cols = [
+        c.source_column for c in cd.columns.values() if c.role == "dimension"
+    ]
+    if dim_source_cols:
+        df = drop_blank_rows(df, dim_source_cols)
+
+    return (df, url, year_label, stale, stale_reason)
 
 
 @mcp.tool
@@ -473,24 +665,6 @@ async def _get_data_impl(
             "'YYYY' (e.g. '2024')."
         )
 
-    user_query: dict[str, Any] = {}
-    if filters_d:
-        user_query["filters"] = dict(filters_d)
-    if measures is not None:
-        user_query["measures"] = measures
-    if start_v:
-        user_query["start_period"] = start_v
-    if end_v:
-        user_query["end_period"] = end_v
-
-    df, url_used, year_label, stale, stale_reason = await _fetch_and_parse(cd)
-
-    # If latest_only, restrict to just the resolved reporting year.
-    if latest_only:
-        if cd.period_column in df.columns:
-            df = df.loc[df[cd.period_column].astype("string") == year_label]
-            df = df.reset_index(drop=True)
-
     if max_rows is not None:
         if isinstance(max_rows, bool) or not isinstance(max_rows, int):
             raise ValueError(
@@ -510,6 +684,44 @@ async def _get_data_impl(
         effective_max = max_rows
     else:
         effective_max = _DEFAULT_MAX_ROWS
+
+    user_query: dict[str, Any] = {}
+    if filters_d:
+        user_query["filters"] = dict(filters_d)
+    if measures is not None:
+        user_query["measures"] = measures
+    if start_v:
+        user_query["start_period"] = start_v
+    if end_v:
+        user_query["end_period"] = end_v
+
+    # Selective streaming fast path for the two largest CSVs. Skips the
+    # ~5-13s cold pandas parse on `limit=2`-style customer-blocking calls.
+    # Only kicks in when filters can be pushed down as simple equality
+    # predicates (no fuzzy employer-name match, no wildcards). For other
+    # filter shapes — and for the other 5 WGEA datasets — we fall back to
+    # the full-parse-and-cache path, which is fast on warm calls anyway.
+    if (
+        cd.id in _STREAMING_DATASETS
+        and _can_pushdown_filters(cd, filters_d)
+    ):
+        df, url_used, year_label, stale, stale_reason = (
+            await _fetch_and_parse_streaming(
+                cd,
+                max_rows=effective_max,
+                filters=filters_d,
+                start_period=start_v,
+                end_period=end_v,
+                latest_only=latest_only,
+            )
+        )
+    else:
+        df, url_used, year_label, stale, stale_reason = await _fetch_and_parse(cd)
+        # If latest_only, restrict to just the resolved reporting year.
+        if latest_only:
+            if cd.period_column in df.columns:
+                df = df.loc[df[cd.period_column].astype("string") == year_label]
+                df = df.reset_index(drop=True)
     response = build_response(
         cd=cd,
         df=df,

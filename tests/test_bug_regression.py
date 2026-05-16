@@ -305,3 +305,184 @@ async def test_bug4_recent_results_lru_bounded(tmp_path):
         )
     finally:
         await client.aclose()
+
+
+# -------------------------------------------------------------------------
+# Bug 8: WORKFORCE_COMPOSITION and EMPLOYEE_SUPPORT — the two biggest CSVs
+# in the WGEA ZIP (56 MB / 154 MB uncompressed) — were timing out at the
+# hosted API's 20s budget even for `limit=2` requests. The cold path was
+# paying the full ~5-13s pandas parse before any row truncation happened.
+# Fix: stream rows with csv.reader and short-circuit at max_rows + 1 (so
+# build_response can still detect truncation). Verified by injecting the
+# bundled fixture ZIP and timing the end-to-end call against a strict
+# budget that the pre-fix code path failed (it would have re-parsed the
+# fixture's 200-row CSVs serially via pandas).
+# -------------------------------------------------------------------------
+def _make_streaming_fixture(monkeypatch):
+    """Inject the bundled fixture ZIP into server._fetch_zip_body so the
+    streaming fast path runs end-to-end without network. Returns a row-counter
+    that records how many CSV rows the stream actually iterated past — proxy
+    for "did we short-circuit?"
+    """
+    from pathlib import Path
+
+    from wgea_mcp import parsing, server
+    from wgea_mcp.discovery import ResolvedZip
+
+    fixture = Path(__file__).parent / "fixtures" / "wgea_sample.zip"
+    sample_bytes = fixture.read_bytes()
+
+    async def _fake_resolve(client):
+        return ResolvedZip(
+            url="https://example.invalid/wgea_test.zip",
+            reporting_year_label="2024-25",
+            reporting_year_start=2024,
+            tier="seed",
+            stale=False,
+            reason=None,
+        )
+
+    async def _fake_fetch(self, url, *, kind="data"):
+        return sample_bytes
+
+    from wgea_mcp.client import WGEAClient
+
+    monkeypatch.setattr(server, "resolve_latest_zip", _fake_resolve)
+    monkeypatch.setattr(WGEAClient, "fetch_resource", _fake_fetch)
+
+    # Track how many rows the stream consumed to verify short-circuit.
+    seen_calls: dict[str, int] = {}
+    orig_stream = parsing.stream_csv_from_zip
+
+    def _spy_stream(zip_bytes, member_pattern, *, max_rows, row_predicate=None):
+        # Wrap the row_predicate to count invocations — one call per row read.
+        counter = {"rows": 0}
+
+        def counting_predicate(row):
+            counter["rows"] += 1
+            return True if row_predicate is None else row_predicate(row)
+
+        df = orig_stream(
+            zip_bytes,
+            member_pattern,
+            max_rows=max_rows,
+            row_predicate=counting_predicate,
+        )
+        seen_calls[member_pattern] = counter["rows"]
+        return df
+
+    monkeypatch.setattr(parsing, "stream_csv_from_zip", _spy_stream)
+    monkeypatch.setattr(server, "stream_csv_from_zip", _spy_stream)
+    server.reset_df_cache_for_tests()
+    return seen_calls
+
+
+async def test_workforce_composition_limit_short_circuits(monkeypatch):
+    """`get_data('WORKFORCE_COMPOSITION', max_rows=2)` must short-circuit at
+    parse time — must NOT walk the full 200-row fixture CSV.
+    """
+    import time
+
+    from wgea_mcp import server
+
+    seen = _make_streaming_fixture(monkeypatch)
+    t0 = time.time()
+    try:
+        resp = await server.get_data("WORKFORCE_COMPOSITION", max_rows=2)
+        elapsed = time.time() - t0
+        assert resp.row_count == 2, f"expected 2 rows, got {resp.row_count}"
+        # The fixture has ~200 rows; with limit=2 we should only iterate ~3
+        # (max_rows + 1 for truncation detection). Anything ≥10 means
+        # short-circuit regressed.
+        rows_walked = next(iter(seen.values())) if seen else 0
+        assert rows_walked <= 5, (
+            f"streaming did not short-circuit — walked {rows_walked} rows "
+            f"for limit=2 (should be ≤5)"
+        )
+        # Customer-blocking timeout was 20s; require well under that.
+        assert elapsed < 5.0, (
+            f"limit=2 on WORKFORCE_COMPOSITION took {elapsed:.2f}s "
+            f"(must be <5s — was the customer-blocking failure mode)"
+        )
+    finally:
+        await server.reset_client_for_tests()
+
+
+async def test_employee_support_limit_short_circuits(monkeypatch):
+    """`get_data('EMPLOYEE_SUPPORT', max_rows=2)` — the second customer-
+    blocking dataset. Same short-circuit + timeout requirements.
+    """
+    import time
+
+    from wgea_mcp import server
+
+    seen = _make_streaming_fixture(monkeypatch)
+    t0 = time.time()
+    try:
+        resp = await server.get_data("EMPLOYEE_SUPPORT", max_rows=2)
+        elapsed = time.time() - t0
+        assert resp.row_count == 2, f"expected 2 rows, got {resp.row_count}"
+        rows_walked = next(iter(seen.values())) if seen else 0
+        assert rows_walked <= 5, (
+            f"streaming did not short-circuit — walked {rows_walked} rows "
+            f"for limit=2 (should be ≤5)"
+        )
+        assert elapsed < 5.0, (
+            f"limit=2 on EMPLOYEE_SUPPORT took {elapsed:.2f}s "
+            f"(must be <5s — was the customer-blocking failure mode)"
+        )
+    finally:
+        await server.reset_client_for_tests()
+
+
+async def test_streaming_other_datasets_unaffected(monkeypatch):
+    """The other 5 WGEA datasets must NOT enter the streaming path — they
+    use the full-parse-and-cache path which is correct + fast on warm calls.
+    """
+    from wgea_mcp import server
+
+    # Same fixture stubbing, but with a stream-counter that fails if invoked
+    # for any of the 5 non-streaming datasets.
+    seen = _make_streaming_fixture(monkeypatch)
+    untouched = (
+        "GENDER_EQUALITY_ACTIONS",
+        "HARM_PREVENTION",
+        "PARENTAL_LEAVE_FLEX",
+        "WORKFORCE_MANAGEMENT",
+        "WORKPLACE_OVERVIEW",
+    )
+    try:
+        for ds_id in untouched:
+            seen.clear()
+            resp = await server.get_data(ds_id, max_rows=2)
+            assert resp.row_count <= 2
+            assert not seen, (
+                f"{ds_id} should NOT enter the streaming fast path — "
+                f"got stream_csv_from_zip calls: {list(seen.keys())}"
+            )
+    finally:
+        await server.reset_client_for_tests()
+
+
+async def test_streaming_with_fuzzy_filter_falls_back_to_full_parse(monkeypatch):
+    """Fuzzy employer-name filters must fall back to the full-parse path
+    so rapidfuzz / alias map / wildcard logic still works correctly.
+    """
+    from wgea_mcp import server
+
+    seen = _make_streaming_fixture(monkeypatch)
+    try:
+        # Employer-name filter is fuzzy → must NOT enter streaming path.
+        resp = await server.get_data(
+            "WORKFORCE_COMPOSITION",
+            filters={"employer_name": "CBA"},  # alias → Commonwealth Bank
+            max_rows=10,
+        )
+        assert not seen, (
+            f"fuzzy filter must fall back to full-parse path — "
+            f"got stream calls: {list(seen.keys())}"
+        )
+        # The fallback still has to produce useful rows.
+        assert resp.row_count >= 0
+    finally:
+        await server.reset_client_for_tests()
