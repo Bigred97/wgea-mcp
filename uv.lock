@@ -61,11 +61,11 @@ wheels = [
 [[package]]
 name = "aus-identity"
 version = "0.3.0"
-source = { directory = "../aus-identity" }
-
-[package.metadata]
-requires-dist = [{ name = "pytest", marker = "extra == 'dev'", specifier = ">=8" }]
-provides-extras = ["dev"]
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/45/d9/10693716cf3ec0e9f3491eab5f3624bca344e137b647931515fc114d40b1/aus_identity-0.3.0.tar.gz", hash = "sha256:2834868ba3f1088bf8a66c770770478ae700703439cf4b778b47bbe1ac4a0d75", size = 24641, upload-time = "2026-05-17T07:03:43.636Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/53/3e/47b03200c4f1cb7da18ace93cb059301bb6aaef5d469f575bfaeaa46f762/aus_identity-0.3.0-py3-none-any.whl", hash = "sha256:d023a23b9ec9a2c847ebea008594ec17e7ea61281b488945a38f151364293739", size = 15840, upload-time = "2026-05-17T07:03:41.969Z" },
+]
 
 [[package]]
 name = "authlib"
@@ -1711,7 +1711,7 @@ wheels = [
 
 [[package]]
 name = "wgea-mcp"
-version = "0.6.0"
+version = "0.6.1"
 source = { editable = "." }
 dependencies = [
     { name = "aiosqlite" },
@@ -1735,7 +1735,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "aiosqlite", specifier = ">=0.20" },
-    { name = "aus-identity", directory = "../aus-identity" },
+    { name = "aus-identity", specifier = ">=0.3.0" },
     { name = "fastmcp", specifier = ">=2.0,<4" },
     { name = "httpx", specifier = ">=0.27" },
     { name = "openpyxl", specifier = ">=3.1" },

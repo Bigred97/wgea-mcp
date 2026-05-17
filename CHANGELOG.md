@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.1] - 2026-05-17
+
+### Fixed — CI wheel-verify failed on local-directory `aus-identity` source
+
+`pyproject.toml`'s `[tool.uv.sources]` block pointed `aus-identity` at the
+sibling repo path `../aus-identity` (intended as a dev-loop convenience
+while v0.3.0 was queued for PyPI). The 0.6.0 release workflow tried to
+verify the wheel installs cleanly on CI runners, where that sibling path
+doesn't exist, so the verification step failed and the publish step
+didn't fire. Removed the override now that `aus-identity==0.3.0` is
+live on PyPI; regenerated `uv.lock` to source from the registry. No
+runtime behaviour change vs 0.6.0. 228 tests still pass.
+
 ## [0.6.0] - 2026-05-17
 
 ### Added — HEADLINE_GAP curated dataset (the most-searched WGEA number)
