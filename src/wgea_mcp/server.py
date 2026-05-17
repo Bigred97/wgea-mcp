@@ -626,8 +626,9 @@ async def describe_dataset(
         str,
         Field(
             description=(
-                "Curated dataset ID. Use search_datasets() to discover or "
-                "list_curated() to enumerate. Case-insensitive."
+                "Curated dataset ID. Use the search endpoint or search tool "
+                "to discover, or the list-curated endpoint/tool to enumerate. "
+                "Case-insensitive."
             ),
             examples=[
                 "WORKFORCE_COMPOSITION",
@@ -854,7 +855,7 @@ async def get_data(
     dataset_id: Annotated[
         str,
         Field(
-            description="Curated dataset ID. Use search_datasets() / list_curated().",
+            description="Curated dataset ID. Use the search or list-curated endpoint/tool to discover.",
             examples=[
                 "WORKFORCE_COMPOSITION",
                 "WORKFORCE_MANAGEMENT",
@@ -1067,7 +1068,7 @@ async def top_n(
     dataset_id: Annotated[
         str,
         Field(
-            description="Curated dataset ID. Use search_datasets() / list_curated().",
+            description="Curated dataset ID. Use the search or list-curated endpoint/tool to discover.",
             examples=[
                 "WORKFORCE_COMPOSITION",
                 "WORKFORCE_MANAGEMENT",
@@ -1084,7 +1085,7 @@ async def top_n(
                 "Numeric measure column to rank by. WGEA measures are "
                 "`n_employees` (WORKFORCE_COMPOSITION, WORKFORCE_MANAGEMENT) "
                 "or `n_responses` (the other five questionnaire datasets). "
-                "Use describe_dataset() to confirm."
+                "Use the describe endpoint or describe tool to confirm."
             ),
             examples=["n_employees", "n_responses"],
         ),
