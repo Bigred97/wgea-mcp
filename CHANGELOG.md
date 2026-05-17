@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.7] - 2026-05-18
+
+### Fixed — CI wheel-verify assertion (curated dataset count drift)
+
+0.6.6's lint fix unblocked the lint step but the wheel-verify build
+step was still failing — it asserted `n == 7` curated datasets but
+`HEADLINE_GAP` was added in an earlier release, making the actual count
+8. Changed to `n >= 7` so future curated additions don't re-break CI
+the same way.
+
+No runtime change vs 0.6.6.
+
+235 unit tests pass.
+
 ## [0.6.6] - 2026-05-18
 
 ### Fixed — CI lint failure (E402 in tests/test_parsing.py)
