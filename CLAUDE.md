@@ -17,10 +17,17 @@ plus the cross-sister discipline.
 | PyPI package | `wgea-mcp` |
 | GitHub | https://github.com/Bigred97/wgea-mcp |
 
-## Curated datasets (7)
+## Curated datasets (8)
 
 WORKFORCE_COMPOSITION · WORKFORCE_MANAGEMENT · GENDER_EQUALITY_ACTIONS ·
-PARENTAL_LEAVE_FLEX · HARM_PREVENTION · EMPLOYEE_SUPPORT · WORKPLACE_OVERVIEW
+PARENTAL_LEAVE_FLEX · HARM_PREVENTION · EMPLOYEE_SUPPORT · WORKPLACE_OVERVIEW ·
+HEADLINE_GAP
+
+HEADLINE_GAP is the odd one out — it's `format: xlsx_aggregated`, sourced
+from a stable URL on wgea.gov.au (not data.gov.au), and aggregated
+server-side to ~20 rows (19 ANZSIC divisions + 1 synthetic "All employers"
+national row). The other 7 are `format: csv_in_zip` and route through the
+Public Data File ZIP discovery on data.gov.au.
 
 ## Repo-specific module set
 
@@ -33,6 +40,17 @@ Repo-specific extras:
 
 ## Repo-specific gotchas
 
+- **HEADLINE_GAP is the only `xlsx_aggregated` dataset in the portfolio.**
+  Source URL is a stable WGEA path (`Employer-Gender-Pay-Gaps-Spreadsheet.xlsx`
+  on `wgea.gov.au`), not data.gov.au CKAN. The client whitelist accepts
+  both hosts. The aggregator filters to private-sector rows only, mirroring
+  WGEA's published Figure 4 mid-points. Reporting year is extracted from
+  the xlsx title row (cell row 2 col 0). Do NOT route this dataset through
+  the streaming/CKAN path — `_get_data_impl` forks on `cd.format`.
+- **`anzsic_division` filter normalises through `aus_identity>=0.3.0`.**
+  Users can pass full division name, ANZSIC letter (A-S), or 2/3/4-digit
+  numeric code; YAML alias map also handles synonyms ('banking', 'realestate',
+  'all'). Permissive=True keeps unknown values flowing to the matcher.
 - **Workflow file is named `publish.yml` (NOT `release.yml` like sister MCPs).**
   PyPI Trusted Publishing has a pending-publisher pointed at the filename
   `publish.yml`; renaming would break OIDC auth on the next release. Leave
@@ -64,7 +82,7 @@ The 5 below are the uniform brand. Additional tools (e.g. `top_n`, `stats`) are
 allowed where the data shape genuinely needs them — they must use the same
 `Annotated[Field]` discipline and `DataResponse` envelope as the core 5.
 
-1. `search_datasets(query, limit)` — fuzzy search across the seven curated WGEA datasets
+1. `search_datasets(query, limit)` — fuzzy search across the eight curated WGEA datasets
 2. `describe_dataset(dataset_id)` — dimensions + measures + source URL + current reporting year
 3. `get_data(dataset_id, filters, start_period, end_period, format, max_rows)` — query
 4. `latest(dataset_id, filters, max_rows)` — latest reporting year only
@@ -126,7 +144,7 @@ on PyPI is bound to workflow `publish.yml`.
   the rename would break OIDC auth on the next release. The sister repos
   use `release.yml` — wgea-mcp is the documented exception.
 - Don't add tools that duplicate or rename the core 5; their names/shapes are fixed. Extras are allowed only where the data shape genuinely needs them (e.g. `top_n`, `stats`) and must follow the same `Annotated[Field]` + `DataResponse` discipline
-- Don't add new top-level dependencies beyond what other sisters use (httpx, pydantic, fastmcp, aiosqlite, rapidfuzz, pyyaml, + pandas for parsing)
+- Don't add new top-level dependencies beyond what other sisters use (httpx, pydantic, fastmcp, aiosqlite, rapidfuzz, pyyaml, openpyxl, pandas, aus-identity)
 - Don't bundle large XLSX/CSV fixtures in the wheel; cache at runtime. The bundled `tests/fixtures/wgea_sample.zip` is intentionally truncated to <50 KB.
 - Don't ship without 10 consecutive zero-flake pytest runs
 - Don't echo PyPI tokens / PATs in tool output, commit messages, or CHANGELOG

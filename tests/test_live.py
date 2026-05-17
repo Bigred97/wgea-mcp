@@ -137,3 +137,83 @@ async def test_live_attribution_string(live_client):
     )
     assert "Workplace Gender Equality Agency" in resp.attribution
     assert "Creative Commons Attribution 3.0 Australia" in resp.attribution
+
+
+# ─── HEADLINE_GAP live tests (hit wgea.gov.au, not data.gov.au) ─────────
+
+
+@pytest.mark.live
+async def test_live_egpg_xlsx_download(live_client):
+    """The Employer Gender Pay Gaps spreadsheet downloads + has xlsx magic."""
+    from wgea_mcp import curated
+
+    cd = curated.get("HEADLINE_GAP")
+    assert cd is not None and cd.download_url
+    body = await live_client.fetch_resource(cd.download_url, kind="data")
+    assert len(body) > 100_000  # >100 KB — real spreadsheet is ~2 MB
+    # xlsx is a ZIP container under the hood; magic is the same PK header.
+    assert body[:2] == b"PK"
+
+
+@pytest.mark.live
+async def test_live_egpg_xlsx_parses_with_current_year(live_client):
+    """Live aggregation yields ~20 rows tagged with the latest WGEA year."""
+    from wgea_mcp import curated
+    from wgea_mcp.parsing import parse_egpg_xlsx
+
+    cd = curated.get("HEADLINE_GAP")
+    body = await live_client.fetch_resource(cd.download_url, kind="data")
+    df, reporting_year = parse_egpg_xlsx(body)
+    # 19 ANZSIC divisions + 1 All employers row = 20 (give some tolerance
+    # in case WGEA includes/excludes a division).
+    assert 15 <= len(df) <= 22
+    assert reporting_year.startswith("20")  # YYYY-YY label
+    assert (df["reporting_year"] == reporting_year).all()
+    # Every published industry must be present in the All employers row.
+    all_emp = df[df["anzsic_division"] == "All employers"]
+    assert len(all_emp) == 1
+
+
+@pytest.mark.live
+async def test_live_headline_gap_mining_value_in_realistic_range(live_client):
+    """Mining mid-point should land in the 10-30% range every year — wide
+    enough not to fail on annual movements, tight enough to catch a unit
+    bug (e.g. forgetting the ×100 fraction-to-percent conversion)."""
+    from wgea_mcp import curated
+    from wgea_mcp.parsing import parse_egpg_xlsx
+
+    cd = curated.get("HEADLINE_GAP")
+    body = await live_client.fetch_resource(cd.download_url, kind="data")
+    df, _year = parse_egpg_xlsx(body)
+    mining = df[df["anzsic_division"] == "Mining"]
+    assert len(mining) == 1
+    pct = float(mining["total_remuneration_gap_pct"].iloc[0])
+    assert 10.0 <= pct <= 30.0, (
+        f"Mining mid-point {pct} outside the 10-30% range — unit bug?"
+    )
+
+
+@pytest.mark.live
+async def test_live_headline_gap_shape_e2e(live_client):
+    """End-to-end: live xlsx → DataResponse for 'what is Australia's pay gap?'"""
+    from wgea_mcp import curated
+    from wgea_mcp.parsing import parse_egpg_xlsx
+    from wgea_mcp.shaping import build_response
+
+    cd = curated.get("HEADLINE_GAP")
+    body = await live_client.fetch_resource(cd.download_url, kind="data")
+    df, _year = parse_egpg_xlsx(body)
+    resp = build_response(
+        cd=cd, df=df,
+        filters={"anzsic_division": "all"},
+        measures="total_remuneration_gap_pct",
+        start_period=None, end_period=None,
+        fmt="records", user_query={},
+    )
+    assert resp.row_count == 1
+    obs = resp.records[0]
+    assert obs.dimensions["anzsic_division"] == "All employers"
+    assert obs.unit == "percent"
+    # National mid-point of employer GPGs — per WGEA report ~11-13% in
+    # recent years; wide tolerance to avoid year-on-year flake.
+    assert 5.0 <= obs.value <= 20.0

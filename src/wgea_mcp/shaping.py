@@ -324,7 +324,7 @@ def _apply_filters(
                 f"{suggest_msg}"
                 f"Valid filters: {', '.join(valid[:15])}"
                 + ("..." if len(valid) > 15 else "")
-                + f". Try describe_dataset({cd.id!r}) to see the full filter schema."
+                + f". Use the describe endpoint or describe tool to see the full filter schema for {cd.id!r}."
             )
         if user_val is None:
             raise ValueError(

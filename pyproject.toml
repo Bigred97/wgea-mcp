@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "wgea-mcp"
-version = "0.5.4"
+version = "0.6.0"
 description = "MCP server for the Workplace Gender Equality Agency (WGEA) public data file. Plain-English access to per-employer workforce composition, gender-equality policy answers, parental leave, flexible work, and harm-prevention data — every WGEA-reporting employer in Australia, every year, with fuzzy employer-name search and a CC-BY 3.0 AU attribution contract."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -35,8 +35,10 @@ dependencies = [
     "pydantic>=2.7",
     "rapidfuzz>=3.9",
     "pandas>=2.2,<3",
+    "openpyxl>=3.1",
     "aiosqlite>=0.20",
     "PyYAML>=6.0",
+    "aus-identity>=0.3.0",
 ]
 
 [project.optional-dependencies]
@@ -59,6 +61,13 @@ PyPI = "https://pypi.org/project/wgea-mcp/"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/wgea_mcp"]
+
+# Dev-only source override. The wheel pulls aus-identity from PyPI (>=0.3.0)
+# once published; this lets the local dev environment use the sibling repo
+# while v0.3.0 is in the publish queue. uv.sources is build-system-only —
+# does NOT propagate into wheels or sdists.
+[tool.uv.sources]
+aus-identity = { path = "../aus-identity" }
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

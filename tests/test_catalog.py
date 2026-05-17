@@ -59,6 +59,6 @@ def test_search_whitespace_only_raises():
 
 def test_list_summaries_returns_all_curated():
     summaries = catalog.list_summaries()
-    assert len(summaries) == 7
+    assert len(summaries) == 8
     assert all(s.is_curated for s in summaries)
     assert all(s.update_frequency == "annual" for s in summaries)

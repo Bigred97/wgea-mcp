@@ -1,4 +1,4 @@
-"""Async fetcher for data.gov.au CKAN metadata and WGEA ZIP downloads.
+"""Async fetcher for data.gov.au CKAN metadata and WGEA static files.
 
 Two endpoints:
 - `fetch_package(name)`  — CKAN `package_show` for a dataset slug. JSON.
@@ -11,8 +11,11 @@ data.gov.au is CKAN under the Drupal 11 wrapper. The CKAN API path is
 a courteous User-Agent and dedupe concurrent in-flight requests for the
 same URL so a burst of `latest()` calls fans in to one HTTP request.
 
-The host whitelist accepts data.gov.au + subdomains. Defense-in-depth against
-any future CKAN response that hands back an off-host URL.
+The host whitelist accepts both `data.gov.au` (for the annual Public Data
+File ZIP) and `wgea.gov.au` (for the EGPG xlsx that powers HEADLINE_GAP —
+WGEA publishes the rolled-up industry pay-gap spreadsheet on its own site,
+not via data.gov.au). Defense-in-depth against any future CKAN response or
+configuration that ever hands back an off-host URL.
 """
 from __future__ import annotations
 
@@ -30,7 +33,12 @@ from .cache import TTL, Cache, CacheKind
 DEFAULT_BASE_URL = "https://data.gov.au"
 DEFAULT_TIMEOUT = httpx.Timeout(180.0, connect=15.0)  # 2025 ZIP is ~71MB
 
-_ALLOWED_HOST_SUFFIXES = ("data.gov.au",)
+# data.gov.au hosts the annual Public Data File ZIP (CSV-in-ZIP datasets).
+# wgea.gov.au hosts the Employer Gender Pay Gaps spreadsheet that powers
+# HEADLINE_GAP — the aggregated industry mid-point dataset that WGEA does
+# NOT publish to data.gov.au (the publication exposes only the per-employer
+# response CSVs; the rolled-up GPG spreadsheet sits on the WGEA website).
+_ALLOWED_HOST_SUFFIXES = ("data.gov.au", "wgea.gov.au")
 
 # How many recent fetch results to keep in-memory to defeat the SQLite
 # read-after-write race. Each entry is the raw bytes of a fetched resource;
@@ -139,7 +147,7 @@ class WGEAClient:
         if not _is_allowed_host(url):
             raise WGEAAPIError(
                 f"Refusing to fetch off-host URL {url!r}. "
-                "wgea-mcp only fetches from data.gov.au."
+                "wgea-mcp only fetches from data.gov.au and wgea.gov.au."
             )
         return await self._fetch_cached(url, kind=kind)
 

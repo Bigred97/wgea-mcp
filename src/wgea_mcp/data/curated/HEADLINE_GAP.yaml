@@ -1,0 +1,172 @@
+id: HEADLINE_GAP
+name: WGEA Headline Gender Pay Gap — mid-point of employer gaps, by ANZSIC division (annual)
+description: |
+  The headline industry-level gender pay gap percentages WGEA publishes in
+  its annual Employer Gender Pay Gaps Report. One row per ANZSIC division
+  (19 divisions) plus a synthetic "All employers" national row — fetched
+  from the official WGEA spreadsheet, aggregated server-side to a small
+  agent-friendly response (~20 rows × 5 measures).
+
+  Answers the most-searched WGEA question — "what's Australia's gender pay
+  gap?" / "what's the pay gap in mining?" — in a single call. The other
+  seven WGEA curated datasets are per-employer questionnaire responses;
+  none of them carry the rolled-up industry pay-gap percentage because
+  WGEA aggregates remuneration data BEFORE publishing the per-employer
+  CSVs.
+
+  Methodology: each row is the mid-point (median) of employer-level GPGs
+  in that ANZSIC division across all WGEA-reporting private-sector
+  employers (companies with 100+ employees). The "All employers" row is
+  the mid-point across the entire private-sector reporting population.
+  Numbers match WGEA's published Figure 4 in the Employer Gender Pay Gaps
+  Report (e.g. Construction 23.8%, Financial and Insurance Services 21.4%,
+  Mining 18.9% in 2024-25).
+
+  Notes:
+  - Percentages are out of 100 (so 21.4 = 21.4%, NOT 0.214).
+  - Filter `anzsic_division` is permissive — pass the full division name
+    ('Mining', 'Financial and Insurance Services'), the canonical letter
+    ('B', 'K'), or 'All employers' for the national row.
+  - Source xlsx is fetched directly from wgea.gov.au (not data.gov.au —
+    WGEA does not publish the aggregated spreadsheet to CKAN; only the
+    per-employer questionnaire CSVs land there).
+  - For the workforce-weighted national aggregate (~21.1% for 2024-25
+    private sector) that WGEA states in its public materials, see the
+    WGEA Data Explorer — that figure is computed from payroll data WGEA
+    holds before public release and is not derivable from the published
+    employer-level xlsx.
+period_coverage: latest WGEA reporting year (2024-25 in the 2025 release)
+update_frequency: annual
+source_url: https://www.wgea.gov.au/publications/employer-gender-pay-gaps-report
+download_url: https://www.wgea.gov.au/sites/default/files/documents/Employer-Gender-Pay-Gaps-Spreadsheet.xlsx
+zip_member: "2. Employers "
+format: xlsx_aggregated
+layout: wide
+cache_kind: data
+period_column: reporting_year
+search_keywords:
+  - headline
+  - pay gap
+  - gender pay gap
+  - gpg
+  - industry
+  - division
+  - anzsic
+  - sector
+  - mining
+  - finance
+  - construction
+  - retail
+  - healthcare
+  - national
+  - australia
+  - mid-point
+  - midpoint
+  - aggregate
+  - benchmark
+  - remuneration
+  - base salary
+  - median
+columns:
+  reporting_year:
+    source_column: reporting_year
+    description: "WGEA reporting year (e.g. '2024-25'). Runs 1 April → 31 March."
+    role: dimension
+    dtype: string
+  anzsic_division:
+    source_column: anzsic_division
+    description: "ANZSIC division name (e.g. 'Mining', 'Financial and Insurance Services') or 'All employers' for the synthetic national row. Permissive — passes through to filter logic so 'mining', 'b' (the letter), 'All employers', or any free-text value reaches the matcher."
+    role: dimension
+    dtype: string
+    permissive: true
+  total_remuneration_gap_pct:
+    source_column: total_remuneration_gap_pct
+    description: "Mid-point of employer Average Total Remuneration gender pay gap (%) across the division. WGEA's headline measure — includes base salary plus overtime, bonuses, additional payments, and the annualised full-time-equivalent salary of casual/part-time workers."
+    unit: percent
+    role: measure
+    dtype: float
+  base_salary_gap_pct:
+    source_column: base_salary_gap_pct
+    description: "Mid-point of employer Average Base Salary gender pay gap (%) across the division. Base salary excludes overtime + bonuses — narrower than the total-remuneration measure."
+    unit: percent
+    role: measure
+    dtype: float
+  median_total_rem_gap_pct:
+    source_column: median_total_rem_gap_pct
+    description: "Mid-point of employer Median Total Remuneration gender pay gap (%) across the division. Median strips the influence of high-earning outliers, so this is usually smaller than total_remuneration_gap_pct."
+    unit: percent
+    role: measure
+    dtype: float
+  median_base_salary_gap_pct:
+    source_column: median_base_salary_gap_pct
+    description: "Mid-point of employer Median Base Salary gender pay gap (%) across the division."
+    unit: percent
+    role: measure
+    dtype: float
+  employer_count:
+    source_column: employer_count
+    description: "Number of WGEA-reporting private-sector employers contributing to the mid-point for this division (or all of them, for the 'All employers' row)."
+    unit: employers
+    role: measure
+    dtype: integer
+dimension_values:
+  anzsic_division:
+    permissive: true
+    values:
+      a: Agriculture, Forestry and Fishing
+      agriculture: Agriculture, Forestry and Fishing
+      farming: Agriculture, Forestry and Fishing
+      b: Mining
+      mining: Mining
+      resources: Mining
+      c: Manufacturing
+      manufacturing: Manufacturing
+      d: Electricity, Gas, Water and Waste Services
+      utilities: Electricity, Gas, Water and Waste Services
+      energy: Electricity, Gas, Water and Waste Services
+      e: Construction
+      construction: Construction
+      f: Wholesale Trade
+      wholesale: Wholesale Trade
+      g: Retail Trade
+      retail: Retail Trade
+      h: Accommodation and Food Services
+      hospitality: Accommodation and Food Services
+      accommodation: Accommodation and Food Services
+      i: Transport, Postal and Warehousing
+      transport: Transport, Postal and Warehousing
+      logistics: Transport, Postal and Warehousing
+      j: Information Media and Telecommunications
+      telco: Information Media and Telecommunications
+      telecommunications: Information Media and Telecommunications
+      media: Information Media and Telecommunications
+      k: Financial and Insurance Services
+      finance: Financial and Insurance Services
+      banking: Financial and Insurance Services
+      insurance: Financial and Insurance Services
+      l: Rental, Hiring and Real Estate Services
+      real_estate: Rental, Hiring and Real Estate Services
+      realestate: Rental, Hiring and Real Estate Services
+      m: Professional, Scientific and Technical Services
+      professional: Professional, Scientific and Technical Services
+      consulting: Professional, Scientific and Technical Services
+      n: Administrative and Support Services
+      admin: Administrative and Support Services
+      o: Public Administration and Safety
+      public_admin: Public Administration and Safety
+      government: Public Administration and Safety
+      p: Education and Training
+      education: Education and Training
+      q: Health Care and Social Assistance
+      healthcare: Health Care and Social Assistance
+      health: Health Care and Social Assistance
+      r: Arts and Recreation Services
+      arts: Arts and Recreation Services
+      recreation: Arts and Recreation Services
+      s: Other Services
+      other: Other Services
+      all: All employers
+      all_employers: All employers
+      national: All employers
+      australia: All employers
+      total: All employers

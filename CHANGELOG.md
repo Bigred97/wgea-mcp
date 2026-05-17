@@ -5,6 +5,69 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2026-05-17
+
+### Added — HEADLINE_GAP curated dataset (the most-searched WGEA number)
+
+New 8th curated dataset `HEADLINE_GAP` answers the most-searched WGEA
+questions — "what's Australia's gender pay gap?" and "what's the pay gap
+in mining/finance/construction?" — which the existing 7 per-employer
+datasets cannot. WGEA aggregates remuneration data BEFORE publishing the
+per-employer CSVs on data.gov.au, so the rolled-up industry pay-gap
+percentage lives only in WGEA's annually-published Employer Gender Pay
+Gaps spreadsheet on wgea.gov.au.
+
+- One row per ANZSIC division (19 divisions) plus a synthetic
+  `All employers` national row. Mid-points match WGEA's published
+  Figure 4 in the annual report (Construction 23.8%, Financial and
+  Insurance Services 21.4%, Mining 18.9% in 2024-25).
+- Five measures: `total_remuneration_gap_pct`, `base_salary_gap_pct`,
+  `median_total_rem_gap_pct`, `median_base_salary_gap_pct`,
+  `employer_count`. Percentages are out of 100.
+- Filter `anzsic_division` accepts the full division name ('Mining'),
+  the ANZSIC division letter ('B'), a 2/3/4-digit code ('06', '0801'),
+  or a synonym ('mining', 'finance', 'banking', 'realestate'). Uses
+  `aus-identity>=0.3.0` for cross-source canonical normalisation.
+- Filter `anzsic_division=all` (or `national` / `australia` / `total`)
+  returns the single national mid-point row.
+- Source: `https://www.wgea.gov.au/sites/default/files/documents/Employer-Gender-Pay-Gaps-Spreadsheet.xlsx`
+  (~2 MB xlsx, ~20 row response after server-side aggregation).
+- Cached at runtime (`cache_kind: data`, 30-day TTL); no xlsx bytes
+  bundled in the wheel. Falls back to last-good cached payload when
+  upstream is unreachable (graceful degradation per portfolio dim #4).
+
+### Added — wgea.gov.au allowlisted as a fetch host
+
+`WGEAClient.fetch_resource` now accepts URLs on `wgea.gov.au` in addition
+to `data.gov.au`. WGEA hosts the EGPG spreadsheet on its own site;
+data.gov.au only carries the per-employer Public Data File ZIP.
+
+### Added — `xlsx_aggregated` curated format
+
+`curated.py` now accepts a second `format` value alongside `csv_in_zip`.
+xlsx_aggregated datasets declare a stable `download_url` instead of
+relying on CKAN discovery, and use `zip_member` to name the source sheet
+within the spreadsheet. Loader rejects xlsx_aggregated YAMLs missing a
+`download_url`.
+
+### Added — ANZSIC division normaliser in `translate_filter_value`
+
+The `anzsic_division` dimension now routes through `aus_identity` (v0.3+)
+so users can pass any of: full division name, division letter (A-S),
+2/3/4-digit ANZSIC code, or YAML alias. Backwards compatible — the
+existing 7 datasets that don't expose this dimension are unaffected.
+
+### Internal
+
+- Added `openpyxl>=3.1` and `aus-identity>=0.3.0` to project deps.
+- Added `parse_egpg_xlsx` to `parsing.py` (private-sector filter +
+  industry groupby + percent conversion).
+- Added `_fetch_and_parse_xlsx` to `server.py` dispatcher; HEADLINE_GAP
+  routes through it (bypasses CKAN discovery + the streaming fast path,
+  neither of which applies to the small aggregated response).
+- Added tests/fixtures/wgea_egpg_sample.xlsx (~6 KB, 9 private + 1
+  Commonwealth row across 3 industries) for offline parser tests.
+
 ## [0.5.4] - 2026-05-17
 
 ### Fixed — event-loop blocking on sync ZIP-CSV parse

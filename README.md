@@ -62,10 +62,11 @@ Every response is the same shape — `dataset_id`, `dataset_name`, `query`, `rep
 
 ---
 
-## Curated datasets (7 in v0.1)
+## Curated datasets (8)
 
-| ID                          | What it is                                                                  | Source CSV |
-|-----------------------------|-----------------------------------------------------------------------------|------------|
+| ID                          | What it is                                                                  | Source |
+|-----------------------------|-----------------------------------------------------------------------------|--------|
+| `HEADLINE_GAP`              | Industry gender pay gap mid-points by ANZSIC division + national rollup     | EGPG xlsx on `wgea.gov.au` (aggregated server-side) |
 | `WORKFORCE_COMPOSITION`     | Per-employer headcount by occupation × manager category × gender            | `wgea_workforce_composition_<year>.csv` |
 | `WORKFORCE_MANAGEMENT`      | Manager movements (promotions, hires, resignations) by gender               | `wgea_workforce_management_statistics_<year>.csv` |
 | `GENDER_EQUALITY_ACTIONS`   | Pay-gap analyses, gender targets, governance — Q&A responses                | `wgea_questionnaire_action_on_gender_equality_<year>.csv` |
@@ -74,7 +75,7 @@ Every response is the same shape — `dataset_id`, `dataset_name`, `query`, `rep
 | `EMPLOYEE_SUPPORT`          | Carer leave, EAP, mental-health programs                                     | `wgea_questionnaire_employee_support_<year>.csv` |
 | `WORKPLACE_OVERVIEW`        | Board composition, governing-body diversity, CEO + KMP demographics          | `wgea_questionnaire_workplace_overview_<year>.csv` |
 
-> **Note on the headline gender-pay-gap %.** WGEA's Data Explorer publishes a headline per-employer gender pay gap percentage. That specific aggregate is NOT included in the public CSV release — WGEA pre-aggregates remuneration data before public publication. Use this MCP for the underlying workforce composition + policy detail; use [WGEA's Data Explorer](https://www.wgea.gov.au/Data-Explorer) for the headline pay-gap percentage.
+> **The headline gender pay-gap %.** `HEADLINE_GAP` (added in 0.6.0) carries the industry mid-points WGEA publishes annually in its Employer Gender Pay Gaps Report — e.g. Mining 18.9%, Financial and Insurance Services 21.4%, "All employers" national mid-point 11.2% (2024-25 reporting year). Numbers match WGEA's published Figure 4 to within rounding. For the workforce-weighted national aggregate (~21.1% private sector) WGEA states in its public materials, see the [WGEA Data Explorer](https://www.wgea.gov.au/Data-Explorer) — that figure requires payroll data WGEA holds before public release and is not derivable from the published employer-level xlsx.
 
 ---
 

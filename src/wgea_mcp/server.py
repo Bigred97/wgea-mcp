@@ -39,7 +39,12 @@ from .models import (
     DatasetDetail,
     DatasetSummary,
 )
-from .parsing import drop_blank_rows, read_csv_from_zip, stream_csv_from_zip
+from .parsing import (
+    drop_blank_rows,
+    parse_egpg_xlsx,
+    read_csv_from_zip,
+    stream_csv_from_zip,
+)
 from .shaping import build_response
 
 # Curated IDs are uppercase letters + digits + underscore.
@@ -221,6 +226,77 @@ def _validate_period(value: Any, field_name: str) -> str | None:
             "end_period='2024-25')."
         )
     return s
+
+
+async def _fetch_and_parse_xlsx(
+    cd: curated.CuratedDataset,
+) -> tuple[pd.DataFrame, str, str, bool, str | None]:
+    """Fetch the EGPG xlsx + aggregate to the HEADLINE_GAP DataFrame.
+
+    The xlsx_aggregated path skips CKAN discovery — the WGEA spreadsheet
+    URL is stable (`Employer-Gender-Pay-Gaps-Spreadsheet.xlsx`) and the
+    file is hosted on wgea.gov.au, not data.gov.au. Reporting year is
+    pulled from the title row inside the xlsx, so it stays in sync with
+    WGEA's release cadence without a separate discovery call.
+
+    Cached DataFrame is keyed by (url, dataset_id, body_size, sha256-of-
+    head-and-tail) so a fresh WGEA upload invalidates the cache even if
+    the URL is unchanged.
+
+    Returns (df, url, reporting_year_label, stale, stale_reason) — same
+    shape as `_fetch_and_parse` so the dispatcher can swap freely.
+    """
+    if not cd.download_url:
+        # Defensive — curated.py rejects xlsx_aggregated YAMLs without a
+        # download_url, so this branch is unreachable in practice.
+        raise ValueError(
+            f"Dataset {cd.id!r} is xlsx_aggregated but its curated entry "
+            "is missing a download_url."
+        )
+    client = await _get_client()
+    try:
+        body = await client.fetch_resource(cd.download_url, kind="data")
+    except WGEAAPIError as e:
+        raise ValueError(
+            f"Could not fetch WGEA spreadsheet for {cd.id!r}. ({e})"
+        ) from e
+
+    head = body[:8192]
+    tail = body[-2048:] if len(body) > 8192 else b""
+    body_sig = hashlib.sha256(head + tail).digest()
+    cache_key = (cd.download_url, cd.id, len(body), body_sig)
+
+    async with _df_cache_lock:
+        cached = _df_cache.get(cache_key)
+        if cached is not None:
+            _df_cache.move_to_end(cache_key)
+            # Reporting year is the first row of the cached DataFrame —
+            # all HEADLINE_GAP rows share the same year.
+            year_label = _year_label_from_df(cached)
+            return cached, cd.download_url, year_label, False, None
+
+    # Parse off-loop — openpyxl is sync + slow on ~2 MB xlsx.
+    df, year_label = await asyncio.to_thread(parse_egpg_xlsx, body)
+
+    async with _df_cache_lock:
+        _df_cache[cache_key] = df
+        _df_cache.move_to_end(cache_key)
+        while len(_df_cache) > _DF_CACHE_MAX_ENTRIES:
+            _df_cache.popitem(last=False)
+    return df, cd.download_url, year_label, False, None
+
+
+def _year_label_from_df(df: pd.DataFrame) -> str:
+    """Pull the reporting_year string out of a parsed HEADLINE_GAP DataFrame.
+
+    All rows share the same year — safely return the first non-null value.
+    Empty / missing column falls back to empty string (the warm-cache path
+    only enters here after `parse_egpg_xlsx` already populated the column).
+    """
+    if "reporting_year" not in df.columns or df.empty:
+        return ""
+    series = df["reporting_year"].dropna()
+    return str(series.iloc[0]) if not series.empty else ""
 
 
 async def _fetch_zip_body(
@@ -604,12 +680,18 @@ async def describe_dataset(
         if c.role == "measure"
     ]
 
-    # Try a cheap CKAN call to surface the current reporting year — non-fatal.
+    # Try a cheap fetch to surface the current reporting year — non-fatal.
+    # xlsx_aggregated datasets (HEADLINE_GAP) carry the year in their xlsx
+    # title row, not on data.gov.au — fetch the spreadsheet's parsed
+    # DataFrame to read it (warm-cached after the first request).
     year_label: str | None = None
     try:
-        client = await _get_client()
-        resolved = await resolve_latest_zip(client)
-        year_label = resolved.reporting_year_label
+        if cd.format == "xlsx_aggregated":
+            df, _url, year_label, _stale, _reason = await _fetch_and_parse_xlsx(cd)
+        else:
+            client = await _get_client()
+            resolved = await resolve_latest_zip(client)
+            year_label = resolved.reporting_year_label
     except Exception:
         year_label = None
 
@@ -707,13 +789,19 @@ async def _get_data_impl(
     if end_v:
         user_query["end_period"] = end_v
 
-    # Selective streaming fast path for the two largest CSVs. Skips the
-    # ~5-13s cold pandas parse on `limit=2`-style customer-blocking calls.
-    # Only kicks in when filters can be pushed down as simple equality
-    # predicates (no fuzzy employer-name match, no wildcards). For other
-    # filter shapes — and for the other 5 WGEA datasets — we fall back to
-    # the full-parse-and-cache path, which is fast on warm calls anyway.
-    if (
+    # Dispatch on dataset format:
+    # - xlsx_aggregated (HEADLINE_GAP) — fetch the WGEA spreadsheet, run
+    #   the in-memory aggregator. No CKAN discovery; reporting_year comes
+    #   from the xlsx title row. Result is ~20 rows so no streaming path.
+    # - csv_in_zip — the 7 questionnaire / composition datasets. Use the
+    #   streaming fast path for the largest CSVs when filters are simple
+    #   equality (cuts ~5-13s off the cold-call). Otherwise full-parse.
+    if cd.format == "xlsx_aggregated":
+        df, url_used, year_label, stale, stale_reason = await _fetch_and_parse_xlsx(cd)
+        # HEADLINE_GAP only carries one reporting year per WGEA release, so
+        # latest_only is a no-op — every row already matches the resolved
+        # year. Skip the slice rather than triggering an unnecessary scan.
+    elif (
         cd.id in _STREAMING_DATASETS
         and _can_pushdown_filters(cd, filters_d)
     ):

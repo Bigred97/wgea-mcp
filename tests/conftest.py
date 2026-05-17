@@ -18,6 +18,11 @@ from wgea_mcp import curated, shaping
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures"
 SAMPLE_ZIP_PATH = FIXTURE_DIR / "wgea_sample.zip"
+# Truncated EGPG xlsx fixture for HEADLINE_GAP — 9 private-sector employer
+# rows across Mining/Finance/Construction + 1 Commonwealth row that must
+# be filtered out by the aggregator. Kept under 10 KB so the wheel stays
+# lean (real WGEA xlsx is ~2 MB).
+SAMPLE_EGPG_XLSX_PATH = FIXTURE_DIR / "wgea_egpg_sample.xlsx"
 
 
 @pytest.fixture(autouse=True)
@@ -38,6 +43,12 @@ def fixture_dir() -> Path:
 def sample_zip_bytes() -> bytes:
     """The truncated WGEA ZIP shipped under tests/fixtures."""
     return SAMPLE_ZIP_PATH.read_bytes()
+
+
+@pytest.fixture
+def sample_egpg_xlsx_bytes() -> bytes:
+    """The truncated EGPG xlsx fixture (HEADLINE_GAP source)."""
+    return SAMPLE_EGPG_XLSX_PATH.read_bytes()
 
 
 @pytest.fixture

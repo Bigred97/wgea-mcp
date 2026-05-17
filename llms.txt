@@ -1,12 +1,12 @@
 # wgea-mcp
 
-> MCP server exposing the Workplace Gender Equality Agency Public Data File through 5 plain-English tools — per-employer workforce composition, manager movements, parental leave, harassment policies, board diversity for every WGEA-reporting Australian employer (~9,600).
+> MCP server exposing the Workplace Gender Equality Agency Public Data File through 5 plain-English tools — per-employer workforce composition, manager movements, parental leave, harassment policies, board diversity for every WGEA-reporting Australian employer (~9,600), plus rolled-up industry gender pay-gap mid-points by ANZSIC division.
 
-wgea-mcp is the Workplace Gender Equality Agency (WGEA) member of the Australian Public Data MCP portfolio. It fetches the annual Public Data File (a ~71 MB ZIP of CSVs) from data.gov.au's CKAN, with a 2-tier URL resolver — live CKAN `package_show` then a bundled seed manifest (CI-refreshed). The seven thematic CSVs inside the ZIP are exposed as seven datasets.
+wgea-mcp is the Workplace Gender Equality Agency (WGEA) member of the Australian Public Data MCP portfolio. It fetches the annual Public Data File (a ~71 MB ZIP of CSVs) from data.gov.au's CKAN, with a 2-tier URL resolver — live CKAN `package_show` then a bundled seed manifest (CI-refreshed). The seven thematic CSVs inside the ZIP are exposed as seven datasets, plus an eighth dataset (`HEADLINE_GAP`) sourced from the rolled-up Employer Gender Pay Gaps spreadsheet on wgea.gov.au and aggregated server-side to ANZSIC-division mid-points + a national rollup row.
 
-Per-employer reporting is a deliberate disclosure under the Workplace Gender Equality Act 2012 — redistribution is explicitly intended. Fuzzy employer-name search resolves abbreviations and aliases ("CBA" → Commonwealth Bank of Australia, "Woolies" → Woolworths Group Limited) via a `WRatio + partial_ratio` blended scorer; the `did_you_mean` field surfaces top-5 closest matches when nothing resolves exactly. Every response carries CC-BY 3.0 Australia attribution. WGEA reporting years are labelled `YYYY-YY` (e.g. `2024-25` = 1 Apr 2024 to 31 Mar 2025).
+Per-employer reporting is a deliberate disclosure under the Workplace Gender Equality Act 2012 — redistribution is explicitly intended. Fuzzy employer-name search resolves abbreviations and aliases ("CBA" → Commonwealth Bank of Australia, "Woolies" → Woolworths Group Limited) via a `WRatio + partial_ratio` blended scorer; the `did_you_mean` field surfaces top-5 closest matches when nothing resolves exactly. The `HEADLINE_GAP` dataset's `anzsic_division` filter accepts the full division name ("Mining"), the ANZSIC letter ("B"), a 2/3/4-digit code ("06"), or a synonym ("mining", "finance", "banking", "all") via `aus-identity>=0.3.0`. Every response carries CC-BY 3.0 Australia attribution. WGEA reporting years are labelled `YYYY-YY` (e.g. `2024-25` = 1 Apr 2024 to 31 Mar 2025).
 
-Important caveat: WGEA's Data Explorer publishes a headline per-employer gender pay gap percentage; that specific aggregate is NOT in the public CSV release because WGEA pre-aggregates remuneration data before publication. Use wgea-mcp for the underlying workforce composition + policy detail; use [WGEA's Data Explorer](https://www.wgea.gov.au/Data-Explorer) for the headline pay-gap percentage.
+Two headline gender-pay-gap numbers exist in WGEA's publications: (1) the mid-point of employer GPGs (e.g. "All employers" 11.2% private sector in 2024-25) — `HEADLINE_GAP` returns this; (2) the workforce-weighted aggregate (~21.1%) which WGEA publishes via its Data Explorer using payroll data held before public release — this number is not derivable from the public xlsx and is not exposed by this MCP.
 
 ## Documentation
 
@@ -16,14 +16,17 @@ Important caveat: WGEA's Data Explorer publishes a headline per-employer gender 
 
 ## Tools
 
-- search_datasets(query, limit=10): Fuzzy search the 7 curated WGEA datasets
+- search_datasets(query, limit=10): Fuzzy search the 8 curated WGEA datasets
 - describe_dataset(dataset_id): Schema — filterable dimensions, measures, source URL, current reporting year
 - get_data(dataset_id, filters, start_period, end_period, format, max_rows): Filtered query; max_rows caps at 10000
 - latest(dataset_id, filters, max_rows): Restrict to the latest reporting year only
-- list_curated(): Enumerate the 7 dataset IDs
+- list_curated(): Enumerate the 8 dataset IDs
 
 ## Example queries
 
+- "What's Australia's gender pay gap?" → HEADLINE_GAP, filter `anzsic_division=all`
+- "What's the pay gap in mining?" → HEADLINE_GAP, filter `anzsic_division=mining`
+- "Industry pay gap mid-points across all ANZSIC divisions" → HEADLINE_GAP, no filter
 - "What's the gender breakdown at Commonwealth Bank?"
 - "Which mining companies set gender targets in 2024-25?"
 - "Workforce composition by occupation at Qantas"

@@ -27,10 +27,12 @@ from __future__ import annotations
 
 import csv
 import io
+import math
 import re
 import zipfile
 from collections.abc import Callable
 from io import BytesIO
+from typing import Any
 
 import pandas as pd
 
@@ -247,3 +249,196 @@ def drop_blank_rows(df: pd.DataFrame, key_columns: list[str]) -> pd.DataFrame:
         return df
     keep_mask = ~df[present].isna().all(axis=1)
     return df.loc[keep_mask].reset_index(drop=True)
+
+
+# ─── HEADLINE_GAP — Employer Gender Pay Gaps spreadsheet aggregator ─────
+#
+# WGEA publishes the rolled-up industry "mid-point" gender pay gaps in an
+# annual xlsx on wgea.gov.au. The xlsx is per-employer — 8,600+ rows on the
+# Employers sheet. We aggregate it server-side into ~20 rows (19 ANZSIC
+# divisions + 1 synthetic "All employers" national row) so HEADLINE_GAP
+# returns a small, agent-friendly answer instead of 8k+ employer rows.
+
+# Source-column labels on the EGPG xlsx Employers sheet. Pinned here so a
+# WGEA header rename surfaces as a ParseError (not a silent column-drop in
+# the groupby). Header row is row 3 in the xlsx (header=3 in pandas terms).
+_EGPG_SHEET = "2. Employers "  # WGEA ships the trailing space; keep verbatim.
+_EGPG_HEADER_ROW = 3
+_EGPG_TITLE_ROW = 2  # row 2 col 0 carries "Results based on YYYY-YY ..."
+
+# Headline pay-gap columns. WGEA encodes percentages as fractions (0.214 not
+# 21.4) — the aggregator multiplies by 100 so DataResponse callers get the
+# user-facing percent. Two snapshots per metric land in the xlsx (current
+# year + prior year) — we take only the current-year columns (the first
+# occurrence; the prior-year columns share the same label and would clash).
+_EGPG_COL_AVG_TOTAL_REM = "Average total remuneration GPG (%)"
+_EGPG_COL_AVG_BASE = "Average base salary GPG (%)"
+_EGPG_COL_MED_TOTAL_REM = "Median total remuneration GPG (%)"
+_EGPG_COL_MED_BASE = "Median base salary GPG (%)"
+_EGPG_COL_INDUSTRY = "Industry (ANZSIC Division)"
+_EGPG_COL_SECTOR = "Sector"
+_EGPG_COL_EMPLOYER = "Employer name"
+
+_ALL_EMPLOYERS_LABEL = "All employers"
+
+# WGEA publishes the headline numbers on a private-sector basis (matches the
+# annual EGPG report's Figure 4). Aggregating across all sectors would mix
+# Commonwealth public-sector rows in and shift the mid-point away from
+# WGEA's published number. Pin to Private explicitly.
+_EGPG_SECTOR_FILTER = "Private"
+
+
+def _extract_reporting_year(workbook_bytes: bytes) -> str:
+    """Pull the "YYYY-YY" reporting-year label out of the xlsx title row.
+
+    Row 2 col 0 of the Employers sheet carries text like
+    "Results based on 2024-25 WGEA Gender Equality Reporting". The aggregator
+    needs the year label to populate `reporting_year` on every returned row
+    so cross-sister consumers can join on it.
+    """
+    try:
+        head = pd.read_excel(
+            BytesIO(workbook_bytes),
+            sheet_name=_EGPG_SHEET,
+            header=None,
+            nrows=_EGPG_TITLE_ROW + 1,
+            engine="openpyxl",
+        )
+    except (ValueError, OSError, zipfile.BadZipFile) as e:
+        raise ParseError(
+            f"could not open EGPG xlsx to read reporting year: {e}"
+        ) from e
+    try:
+        cell = head.iloc[_EGPG_TITLE_ROW, 0]
+    except (KeyError, IndexError) as e:
+        raise ParseError(
+            f"EGPG xlsx title cell (row {_EGPG_TITLE_ROW}) is missing"
+        ) from e
+    if not isinstance(cell, str):
+        raise ParseError(
+            f"EGPG xlsx title cell is not text: {cell!r} ({type(cell).__name__})"
+        )
+    m = re.search(r"(\d{4})-(\d{2,4})", cell)
+    if not m:
+        raise ParseError(
+            f"EGPG xlsx title cell does not contain a YYYY-YY reporting year: {cell!r}"
+        )
+    return m.group(0)
+
+
+def parse_egpg_xlsx(workbook_bytes: bytes) -> tuple[pd.DataFrame, str]:
+    """Aggregate the EGPG spreadsheet into the HEADLINE_GAP DataFrame.
+
+    Returns:
+        (df, reporting_year) where `df` has columns:
+          - reporting_year         (WGEA "YYYY-YY" label)
+          - anzsic_division        (ANZSIC division name, or "All employers")
+          - total_remuneration_gap_pct
+          - base_salary_gap_pct
+          - median_total_rem_gap_pct
+          - median_base_salary_gap_pct
+          - employer_count
+
+        Percentages are out of 100 (so 21.4 means 21.4%, not 0.214). Filtered
+        to private-sector employers to match WGEA's published headline figures
+        (Commonwealth public-sector rows have a different aggregation that
+        WGEA reports separately).
+
+    Raises:
+        ParseError on missing sheet, missing expected columns, or a corrupt
+        xlsx body.
+    """
+    if not workbook_bytes:
+        raise ParseError("empty xlsx body")
+    reporting_year = _extract_reporting_year(workbook_bytes)
+    try:
+        df = pd.read_excel(
+            BytesIO(workbook_bytes),
+            sheet_name=_EGPG_SHEET,
+            header=_EGPG_HEADER_ROW,
+            engine="openpyxl",
+        )
+    except (ValueError, OSError, zipfile.BadZipFile) as e:
+        raise ParseError(f"could not parse EGPG xlsx: {e}") from e
+
+    required = [
+        _EGPG_COL_INDUSTRY,
+        _EGPG_COL_SECTOR,
+        _EGPG_COL_EMPLOYER,
+        _EGPG_COL_AVG_TOTAL_REM,
+        _EGPG_COL_AVG_BASE,
+        _EGPG_COL_MED_TOTAL_REM,
+        _EGPG_COL_MED_BASE,
+    ]
+    missing = [c for c in required if c not in df.columns]
+    if missing:
+        raise ParseError(
+            f"EGPG xlsx is missing expected columns: {missing}. "
+            f"Saw: {list(df.columns)[:8]}"
+            + ("..." if len(df.columns) > 8 else "")
+            + ". WGEA may have changed the spreadsheet shape."
+        )
+
+    # Restrict to private sector — WGEA's published "Mid-point of employer
+    # GPGs" tables are private-sector only.
+    df = df[df[_EGPG_COL_SECTOR].astype("string").str.strip() == _EGPG_SECTOR_FILTER]
+    # Drop rows missing the industry tag (a handful of NaN sentinel rows
+    # appear at the bottom of recent releases).
+    df = df.dropna(subset=[_EGPG_COL_INDUSTRY, _EGPG_COL_EMPLOYER])
+    if df.empty:
+        raise ParseError(
+            f"EGPG xlsx has no {_EGPG_SECTOR_FILTER!r} sector rows after filtering. "
+            "WGEA may have changed the sector labels — flag the release shape."
+        )
+
+    rows: list[dict[str, Any]] = []
+    # One row per ANZSIC division.
+    for division, sub in df.groupby(_EGPG_COL_INDUSTRY, sort=True):
+        rows.append(_aggregate_industry_row(reporting_year, str(division), sub))
+    # Synthetic "All employers" national row — same metric, computed across
+    # the whole private-sector population. This is what answers "what's
+    # Australia's gender pay gap?" without an industry filter.
+    rows.append(_aggregate_industry_row(reporting_year, _ALL_EMPLOYERS_LABEL, df))
+
+    out = pd.DataFrame(rows)
+    # Lexical sort matches the rest of the portfolio (alphabetised divisions
+    # with the All-employers row appearing as 'A...' before 'Agriculture').
+    # Pull All-employers to the top so HEADLINE_GAP latest() with no filter
+    # surfaces the national number first.
+    is_all = out["anzsic_division"] == _ALL_EMPLOYERS_LABEL
+    out = pd.concat([out[is_all], out[~is_all]], ignore_index=True)
+    return out, reporting_year
+
+
+def _aggregate_industry_row(
+    reporting_year: str,
+    division: str,
+    sub: pd.DataFrame,
+) -> dict[str, Any]:
+    """One HEADLINE_GAP row for an ANZSIC division (or the All-employers slice)."""
+    return {
+        "reporting_year": reporting_year,
+        "anzsic_division": division,
+        "total_remuneration_gap_pct": _pct(sub[_EGPG_COL_AVG_TOTAL_REM].median()),
+        "base_salary_gap_pct": _pct(sub[_EGPG_COL_AVG_BASE].median()),
+        "median_total_rem_gap_pct": _pct(sub[_EGPG_COL_MED_TOTAL_REM].median()),
+        "median_base_salary_gap_pct": _pct(sub[_EGPG_COL_MED_BASE].median()),
+        "employer_count": int(sub[_EGPG_COL_EMPLOYER].notna().sum()),
+    }
+
+
+def _pct(fraction: float) -> float | None:
+    """Convert WGEA's fraction (0.214) to a user-facing percent (21.4).
+
+    WGEA stores GPG values as fractions in the xlsx. NaN propagates as None
+    so downstream shaping can drop the cell rather than emit NaN.
+    """
+    if fraction is None:
+        return None
+    try:
+        f = float(fraction)
+    except (TypeError, ValueError):
+        return None
+    if math.isnan(f):
+        return None
+    return round(f * 100.0, 2)

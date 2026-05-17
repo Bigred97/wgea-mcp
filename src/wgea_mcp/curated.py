@@ -45,14 +45,22 @@ class CuratedDimensionValues:
 
 @dataclass(frozen=True)
 class CuratedDataset:
-    """One curated dataset (a single queryable view onto one CSV)."""
+    """One curated dataset (a single queryable view onto one source file)."""
 
     id: str
     name: str
     description: str
     source_url: str  # WGEA / data.gov.au landing
-    zip_member: str  # filename inside the WGEA Public Data File ZIP
-    format: Literal["csv_in_zip"]
+    # For csv_in_zip datasets (the 7 questionnaire+composition tables) this is
+    # the filename or prefix inside the annual Public Data File ZIP. For
+    # xlsx_aggregated (HEADLINE_GAP) it's the sheet name inside the xlsx.
+    zip_member: str
+    # csv_in_zip:     fetched via data.gov.au CKAN discovery, parsed as one
+    #                 CSV per dataset out of the annual WGEA Public Data File
+    # xlsx_aggregated: fetched directly from a stable `download_url` on
+    #                 wgea.gov.au, then aggregated server-side to a small
+    #                 (<50 row) DataFrame before shaping
+    format: Literal["csv_in_zip", "xlsx_aggregated"]
     layout: Layout
     period_coverage: str | None
     update_frequency: str | None
@@ -64,6 +72,9 @@ class CuratedDataset:
     # `reporting_year` column ("2024-25", "2023-24", ...). When the same
     # dataset spans multiple years, agents can filter on this.
     period_column: str | None = "reporting_year"
+    # Direct fetch URL for xlsx_aggregated datasets. csv_in_zip datasets
+    # leave this None — they resolve URLs at request time via CKAN discovery.
+    download_url: str | None = None
 
 
 _REGISTRY: dict[str, CuratedDataset] | None = None
@@ -127,8 +138,12 @@ def _load_one(path: Path) -> CuratedDataset:
         dim_values[key] = _parse_dimension_values(val_raw)
 
     fmt = str(raw.get("format", "csv_in_zip")).lower()
-    if fmt != "csv_in_zip":
-        raise ValueError(f"{path.name}: only 'csv_in_zip' format is supported in v0.1, got {fmt!r}")
+    if fmt not in ("csv_in_zip", "xlsx_aggregated"):
+        raise ValueError(
+            f"{path.name}: unsupported format {fmt!r}. "
+            "Supported: 'csv_in_zip' (annual Public Data File), "
+            "'xlsx_aggregated' (rolled-up spreadsheet on wgea.gov.au)."
+        )
 
     layout = str(raw.get("layout", "wide")).lower()
     if layout not in ("wide", "long"):
@@ -137,6 +152,19 @@ def _load_one(path: Path) -> CuratedDataset:
     zip_member = raw.get("zip_member")
     if not zip_member:
         raise ValueError(f"{path.name}: missing required field 'zip_member'")
+
+    download_url = raw.get("download_url")
+    if fmt == "xlsx_aggregated":
+        if not download_url:
+            raise ValueError(
+                f"{path.name}: 'xlsx_aggregated' format requires a 'download_url' "
+                "pointing at the published spreadsheet."
+            )
+        if not str(download_url).startswith(("http://", "https://")):
+            raise ValueError(
+                f"{path.name}: 'download_url' must be an http(s) URL, "
+                f"got {download_url!r}"
+            )
 
     return CuratedDataset(
         id=str(raw["id"]),
@@ -153,6 +181,7 @@ def _load_one(path: Path) -> CuratedDataset:
         dimension_values=dim_values,
         search_keywords=tuple(raw.get("search_keywords") or ()),
         period_column=raw.get("period_column", "reporting_year"),
+        download_url=str(download_url) if download_url else None,
     )
 
 
@@ -215,15 +244,39 @@ def translate_filter_value(
     Free-form (no enum) and permissive dims pass values through unchanged.
     Unknown values on a strict (non-permissive) enum raise ValueError with
     a "Did you mean?" suggestion when a near-match exists.
+
+    The `anzsic_division` dimension gets a second-tier normaliser via
+    aus_identity (v0.3.0+) so a user can pass the canonical name
+    ('Mining'), the division letter ('B'), a 2/3/4-digit ANZSIC code
+    ('06', '0801'), or a synonym from the YAML alias map and land on
+    the same canonical division name. ANZSIC division names are
+    cross-source standard — every sister MCP that exposes industry-level
+    data normalises through aus_identity.
     """
     dv = cd.dimension_values.get(dim_key)
+    # Case-insensitive lookup against alias keys so 'mining' resolves
+    # whether the YAML stores 'mining' or the user passed 'Mining'.
+    user_lower = user_value.strip().lower() if isinstance(user_value, str) else user_value
+    if dv is not None and dv.values is not None:
+        if user_value in dv.values:
+            return dv.values[user_value]
+        if user_lower in dv.values:
+            return dv.values[user_lower]
+        if user_value in dv.values.values():
+            return user_value
+
+    # Cross-sister ANZSIC division normaliser. Only fires when the dim is
+    # named `anzsic_division` and the YAML alias map didn't already
+    # resolve the value. Lets a caller pass 'B' / '06' / 'mining' and
+    # land on 'Mining' (the canonical name WGEA uses in the xlsx).
+    if dim_key == "anzsic_division":
+        canonical = _normalize_anzsic_division_safe(user_value)
+        if canonical is not None:
+            return canonical
+
+    if dv is not None and dv.permissive:
+        return user_value
     if dv is None or dv.values is None:
-        return user_value
-    if user_value in dv.values:
-        return dv.values[user_value]
-    if user_value in dv.values.values():
-        return user_value
-    if dv.permissive:
         return user_value
     valid = sorted(dv.values.keys())
     hint = _did_you_mean(user_value, valid)
@@ -233,6 +286,28 @@ def translate_filter_value(
         f"{suggestion} Try one of: {', '.join(valid[:15])}"
         + ("..." if len(valid) > 15 else "")
     )
+
+
+def _normalize_anzsic_division_safe(user_value: str) -> str | None:
+    """Try aus_identity's ANZSIC division normaliser; None on no-match.
+
+    aus_identity 0.3+ exposes `ANZSIC_DIVISIONS` (letter → canonical name)
+    and `normalize_anzsic_division` which accepts letters, names, or codes.
+    Wrapped so a bad input doesn't escape — the caller falls back to the
+    permissive path so wgea-mcp still answers 'unknown industry' queries
+    with a sensible response rather than a hard error.
+    """
+    if not isinstance(user_value, str) or not user_value.strip():
+        return None
+    try:
+        from aus_identity import ANZSIC_DIVISIONS, normalize_anzsic_division
+    except ImportError:
+        return None
+    try:
+        letter = normalize_anzsic_division(user_value)
+    except ValueError:
+        return None
+    return ANZSIC_DIVISIONS.get(letter)
 
 
 def _did_you_mean(user_value: str, candidates: list[str]) -> str | None:
