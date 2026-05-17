@@ -134,7 +134,7 @@ def _unknown_dataset_msg(dataset_id: str) -> str:
     return (
         f"Dataset {dataset_id!r} is not a curated wgea-mcp dataset. "
         f"{suggest_msg}Valid options: {', '.join(shown)}{rest}. "
-        "Try list_curated() to enumerate, or search_datasets('<topic>') to find by keyword."
+        "Enumerate the curated set or search by keyword to discover IDs."
     )
 
 
@@ -142,12 +142,12 @@ def _normalize_dataset_id(dataset_id: Any) -> str:
     if not isinstance(dataset_id, str):
         raise ValueError(
             f"dataset_id must be a string, got {type(dataset_id).__name__}. "
-            "Try search_datasets() or list_curated() to discover IDs."
+            "Search by keyword or enumerate the curated set to discover IDs."
         )
     norm = dataset_id.strip().upper()
     if not norm:
         raise ValueError(
-            "dataset_id is empty. Try list_curated() to see available IDs."
+            "dataset_id is empty. Enumerate the curated set to see available IDs."
         )
     if not _DATASET_ID_PATTERN.match(norm):
         raise ValueError(
@@ -281,7 +281,12 @@ async def _fetch_and_parse(
                 stale_reason,
             )
 
-    df = read_csv_from_zip(body, cd.zip_member)
+    # Run sync zipfile + pandas parse off the event loop. WGEA's annual
+    # ZIP is ~71MB containing 7 thematic CSVs (largest ~160MB unzipped);
+    # parsing inline blocks the async tool for seconds, serialises
+    # concurrent requests, and stalls downstream consumers like the
+    # ausdata-api gateway.
+    df = await asyncio.to_thread(read_csv_from_zip, body, cd.zip_member)
 
     # Drop trailing blank rows where every key dimension is NaN.
     dim_source_cols = [
@@ -1075,7 +1080,7 @@ async def top_n(
         raise ValueError(
             "measure is required and must be a non-empty string. "
             "Example: top_n('WORKFORCE_COMPOSITION', 'n_employees', n=10). "
-            "Try describe_dataset(<id>) to see available measure keys."
+            "Use the describe endpoint or describe tool to see the available measure keys."
         )
     if isinstance(n, bool) or not isinstance(n, int):
         raise ValueError(
@@ -1116,7 +1121,7 @@ async def top_n(
             f"Unknown measure {measure!r} for dataset {norm_id!r}. "
             f"{suggest_msg}"
             f"Valid measures: {', '.join(sorted(measure_keys))}. "
-            f"See describe_dataset({norm_id!r}) for the full schema."
+            f"Use the describe endpoint or describe tool to see the full schema for {norm_id!r}."
         )
 
     # Validate `reporting_year` separately from start_period/end_period — it

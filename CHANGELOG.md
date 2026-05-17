@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.4] - 2026-05-17
+
+### Fixed — event-loop blocking on sync ZIP-CSV parse
+
+`_fetch_and_parse` called `read_csv_from_zip` synchronously inside an
+async tool body. WGEA's annual ZIP is ~71MB containing 7 thematic CSVs
+(largest unzips to ~160MB); the sync parse blocked the event loop for
+seconds, serialised concurrent requests behind one parse, and stalled
+downstream consumers like the `ausdata-api` gateway against its 20s
+budget. Wrapped in `asyncio.to_thread` so the parse runs on the default
+executor without blocking other in-flight tool calls. Matches the
+0.4.7 / 0.6.4 / 0.8.6 / 0.8.6 fixes in `aihw-mcp` / `asic-mcp` /
+`apra-mcp` / `ato-mcp`.
+
 ## [0.5.3] - 2026-05-16
 
 ### Performance
