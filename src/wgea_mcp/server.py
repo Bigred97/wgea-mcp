@@ -25,7 +25,7 @@ import pandas as pd
 from fastmcp import FastMCP
 from pydantic import Field
 
-from . import catalog, curated
+from . import catalog, curated, parquet_cache
 from .client import (
     WGEAAPIError,
     WGEAClient,
@@ -275,6 +275,17 @@ async def _fetch_and_parse_xlsx(
             year_label = _year_label_from_df(cached)
             return cached, cd.download_url, year_label, False, None
 
+    # On-disk Parquet fallback (warm cache for cold-restart workers).
+    parquet_df = await asyncio.to_thread(parquet_cache.read_if_fresh, cache_key)
+    if parquet_df is not None:
+        async with _df_cache_lock:
+            _df_cache[cache_key] = parquet_df
+            _df_cache.move_to_end(cache_key)
+            while len(_df_cache) > _DF_CACHE_MAX_ENTRIES:
+                _df_cache.popitem(last=False)
+        year_label = _year_label_from_df(parquet_df)
+        return parquet_df, cd.download_url, year_label, False, None
+
     # Parse off-loop — openpyxl is sync + slow on ~2 MB xlsx.
     df, year_label = await asyncio.to_thread(parse_egpg_xlsx, body)
 
@@ -283,6 +294,8 @@ async def _fetch_and_parse_xlsx(
         _df_cache.move_to_end(cache_key)
         while len(_df_cache) > _DF_CACHE_MAX_ENTRIES:
             _df_cache.popitem(last=False)
+    # Persist for the next cold worker. Best-effort; swallows IO errors.
+    await asyncio.to_thread(parquet_cache.write, cache_key, df)
     return df, cd.download_url, year_label, False, None
 
 
@@ -357,6 +370,18 @@ async def _fetch_and_parse(
                 stale_reason,
             )
 
+    # On-disk Parquet fallback (warm cache for cold-restart workers).
+    # WGEA's annual CSVs are 56-154MB unzipped and parse takes 5-22s;
+    # Parquet-on-disk read for the same DataFrame is ~1-2s.
+    parquet_df = await asyncio.to_thread(parquet_cache.read_if_fresh, cache_key)
+    if parquet_df is not None:
+        async with _df_cache_lock:
+            _df_cache[cache_key] = parquet_df
+            _df_cache.move_to_end(cache_key)
+            while len(_df_cache) > _DF_CACHE_MAX_ENTRIES:
+                _df_cache.popitem(last=False)
+        return parquet_df, url, year_label, stale, stale_reason
+
     # Run sync zipfile + pandas parse off the event loop. WGEA's annual
     # ZIP is ~71MB containing 7 thematic CSVs (largest ~160MB unzipped);
     # parsing inline blocks the async tool for seconds, serialises
@@ -376,6 +401,8 @@ async def _fetch_and_parse(
         _df_cache.move_to_end(cache_key)
         while len(_df_cache) > _DF_CACHE_MAX_ENTRIES:
             _df_cache.popitem(last=False)
+    # Persist for the next cold worker. Best-effort; swallows IO errors.
+    await asyncio.to_thread(parquet_cache.write, cache_key, df)
 
     return (
         df,

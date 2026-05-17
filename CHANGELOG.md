@@ -5,6 +5,46 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.4] - 2026-05-17
+
+### Performance — Parquet on-disk parsed-DataFrame cache
+
+The in-process LRU (`_df_cache`) handles warm queries in ~50ms but it's
+empty on cold restart — the first call after a worker bounce paid the
+full pandas/zipfile parse cost (13-22s for `EMPLOYEE_SUPPORT` at 154MB
+/ 332k rows). The `ausdata-api` gateway's 20s timeout was tripping on
+those cold parses.
+
+Added a Parquet on-disk fallback in `parquet_cache.py`:
+
+- After a parse, the DataFrame is persisted to
+  `~/.wgea-mcp/parquet-cache/{sha256-of-cache-key}.parquet` (path
+  overridable via `WGEA_MCP_PARQUET_CACHE_DIR` for tests + the Fly
+  deploy's `/data` volume).
+- Before parsing, check the file: read with `pd.read_parquet` if fresh
+  (1-2s for the largest CSVs versus 13-22s pandas parse).
+- TTL: 7 days, matching the SQLite byte-cache TTL for `data` kind.
+  Use file mtime; expired files trigger a fresh parse.
+- Self-heal: a corrupt Parquet file is unlinked, and the call falls
+  through to a fresh parse + write — same pattern as the SQLite
+  cache's corruption recovery.
+- Writes go through a `.parquet.tmp` sibling + rename so a crash
+  mid-write doesn't leave a corrupted file behind.
+
+Cold-restart cost on `EMPLOYEE_SUPPORT`: 22s → 1.5s (about 14×).
+Warm-cache (in-process LRU) still 50ms; this layer only kicks in after
+a process restart.
+
+### Internal
+
+- Added `pyarrow>=15` dep (pandas Parquet engine).
+- New `parquet_cache.py` module (~120 lines) + 7 regression tests in
+  `tests/test_parquet_cache.py`.
+- Wired into both `_fetch_and_parse` (ZIP/CSV path for the 7
+  questionnaire datasets) and `_fetch_and_parse_xlsx_aggregated`
+  (`HEADLINE_GAP`). Both paths now: in-memory cache hit → Parquet
+  cache hit → fresh parse + write.
+
 ## [0.6.3] - 2026-05-17
 
 ### Improved — transport-agnostic Field descriptions
