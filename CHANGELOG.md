@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.2] - 2026-05-17
+
+### Fixed — CI wheel-verify hard-coded `n == 7` curated-count assert
+
+`publish.yml`'s smoke-test step asserted exactly 7 curated datasets;
+0.6.0 added `HEADLINE_GAP` bringing the total to 8, so the verify
+step failed and the publish step didn't fire (both 0.6.0 and 0.6.1
+hit this). Relaxed the assert to `>= 7` so future curated additions
+don't break the publish path. The smoke-test's purpose is "wheel
+installs and `list_curated` runs", not "exact dataset count" — that's
+already covered by `test_curated.py` in the unit suite. No runtime
+behaviour change vs 0.6.0 / 0.6.1.
+
 ## [0.6.1] - 2026-05-17
 
 ### Fixed — CI wheel-verify failed on local-directory `aus-identity` source
