@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.5] - 2026-05-18
+
+### Fixed — `describe_dataset('HEADLINE_GAP')` 7-second cold call
+
+Customer-sim reported `/v1/describe/wgea/HEADLINE_GAP` timing out. Root
+cause: describe was eagerly calling `_fetch_and_parse_xlsx(cd)` to get
+the current reporting year for the response's `reporting_year_latest`
+field. On a cold-cache worker that fetch+parse took 6-7s, which combined
+with gateway dispatch + JSON serialisation tripped the upstream timeout.
+
+Wrapped the year-resolution call in `asyncio.wait_for(timeout=1.5)`.
+Customers get `reporting_year_latest=None` when the underlying fetch
+exceeds the cap (rare on warm cache, common on first cold request); the
+year is correctly populated by the subsequent `get_data` call which is
+the right place to pay the parse cost.
+
+Describe cold-call now: **1.48s** (was 6.99s).
+
+No data shape change; the field semantics already documented that
+`reporting_year_latest` is best-effort. 235 tests pass.
+
 ## [0.6.4] - 2026-05-17
 
 ### Performance — Parquet on-disk parsed-DataFrame cache

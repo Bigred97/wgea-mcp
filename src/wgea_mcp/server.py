@@ -708,19 +708,23 @@ async def describe_dataset(
         if c.role == "measure"
     ]
 
-    # Try a cheap fetch to surface the current reporting year — non-fatal.
-    # xlsx_aggregated datasets (HEADLINE_GAP) carry the year in their xlsx
-    # title row, not on data.gov.au — fetch the spreadsheet's parsed
-    # DataFrame to read it (warm-cached after the first request).
+    # Surface the current reporting year as a nice-to-have hint. Time-
+    # capped to 1.5s because describe is meant to be a fast schema lookup;
+    # on cold-start workers the underlying fetch+parse can take 3-7s for
+    # xlsx_aggregated datasets, which trips downstream gateway timeouts.
+    # Customers get year_label=None on miss — get_data populates it
+    # correctly on the actual data fetch.
     year_label: str | None = None
     try:
-        if cd.format == "xlsx_aggregated":
-            df, _url, year_label, _stale, _reason = await _fetch_and_parse_xlsx(cd)
-        else:
+        async def _resolve_year() -> str | None:
+            if cd.format == "xlsx_aggregated":
+                _df, _url, label, _stale, _reason = await _fetch_and_parse_xlsx(cd)
+                return label
             client = await _get_client()
             resolved = await resolve_latest_zip(client)
-            year_label = resolved.reporting_year_label
-    except Exception:
+            return resolved.reporting_year_label
+        year_label = await asyncio.wait_for(_resolve_year(), timeout=1.5)
+    except (TimeoutError, asyncio.TimeoutError, Exception):
         year_label = None
 
     return DatasetDetail(
