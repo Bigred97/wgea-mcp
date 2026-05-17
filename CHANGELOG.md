@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.6] - 2026-05-18
+
+### Fixed — CI lint failure (E402 in tests/test_parsing.py)
+
+0.6.5 release CI's test workflow failed lint because
+`tests/test_parsing.py` uses a deliberate mid-file import below a
+section comment block. Added `[tool.ruff]` config + `tests/*`
+per-file-ignores list to pyproject.toml (matching the abs/apra/asic
+pattern) so the intentional pattern stays valid.
+
+No runtime change vs 0.6.5.
+
+235 unit tests pass.
+
 ## [0.6.5] - 2026-05-18
 
 ### Fixed — `describe_dataset('HEADLINE_GAP')` 7-second cold call
