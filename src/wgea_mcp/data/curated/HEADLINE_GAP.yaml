@@ -14,13 +14,38 @@ description: |
   WGEA aggregates remuneration data BEFORE publishing the per-employer
   CSVs.
 
-  Methodology: each row is the mid-point (median) of employer-level GPGs
-  in that ANZSIC division across all WGEA-reporting private-sector
-  employers (companies with 100+ employees). The "All employers" row is
-  the mid-point across the entire private-sector reporting population.
-  Numbers match WGEA's published Figure 4 in the Employer Gender Pay Gaps
-  Report (e.g. Construction 23.8%, Financial and Insurance Services 21.4%,
-  Mining 18.9% in 2024-25).
+  Methodology (read this carefully — there are TWO different "headline"
+  numbers and they have different methodologies):
+
+  HEADLINE_GAP measures
+  ─────────────────────
+    `total_remuneration_gap_pct` / `base_salary_gap_pct`
+        = mean of per-employer "Average ... GPG (%)" across all
+          private-sector employers in the slice. Unweighted by headcount.
+    `median_total_rem_gap_pct` / `median_base_salary_gap_pct`
+        = median of per-employer "Median ... GPG (%)" — the typical
+          (middle) employer's gap.
+
+  NOT THE SAME AS WGEA's national headline
+  ─────────────────────────────────────────
+  WGEA's Scorecard reports a national Mean Total Remuneration GPG of
+  ~21.1% (2024-25) computed from raw aggregated payroll across all
+  reporting employers — it weights every employee equally, not every
+  employer equally. That figure is NOT derivable from the published
+  per-employer GPG percentages in this spreadsheet (we have GPG % per
+  employer but not exact headcount). For the WGEA national headline,
+  cite https://www.wgea.gov.au/publications/employer-gender-pay-gaps-report
+  directly.
+
+  What HEADLINE_GAP IS useful for
+  ──────────────────────────────
+  - Comparing one ANZSIC division to another within this dataset
+    (e.g. Mining 18.9% vs Hospitality 5.0%).
+  - Tracking median-employer or mean-employer gaps over time.
+  - "What's the typical employer's GPG in industry X?" (use the
+    median measures).
+  - "What's the average employer's GPG in industry X?" (use the
+    mean measures).
 
   Notes:
   - Percentages are out of 100 (so 21.4 = 21.4%, NOT 0.214).
@@ -30,11 +55,6 @@ description: |
   - Source xlsx is fetched directly from wgea.gov.au (not data.gov.au —
     WGEA does not publish the aggregated spreadsheet to CKAN; only the
     per-employer questionnaire CSVs land there).
-  - For the workforce-weighted national aggregate (~21.1% for 2024-25
-    private sector) that WGEA states in its public materials, see the
-    WGEA Data Explorer — that figure is computed from payroll data WGEA
-    holds before public release and is not derivable from the published
-    employer-level xlsx.
 period_coverage: latest WGEA reporting year (2024-25 in the 2025 release)
 update_frequency: annual
 source_url: https://www.wgea.gov.au/publications/employer-gender-pay-gaps-report

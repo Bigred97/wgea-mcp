@@ -415,12 +415,44 @@ def _aggregate_industry_row(
     division: str,
     sub: pd.DataFrame,
 ) -> dict[str, Any]:
-    """One HEADLINE_GAP row for an ANZSIC division (or the All-employers slice)."""
+    """One HEADLINE_GAP row for an ANZSIC division (or the All-employers slice).
+
+    Methodology vs WGEA's national headline figures
+    ───────────────────────────────────────────────
+    HEADLINE_GAP aggregates the per-employer rows from WGEA's Employer Gender
+    Pay Gaps Spreadsheet to a small agent-friendly response. The metrics are
+    DESCRIPTIVE STATISTICS over the per-employer GPG distribution:
+
+      * `total_remuneration_gap_pct` = mean of "Average total remuneration
+        GPG (%)" across employers in the slice
+      * `median_total_rem_gap_pct`   = median of "Median total remuneration
+        GPG (%)" across employers in the slice
+
+    These ARE NOT WGEA's published national headline figures. WGEA's
+    Scorecard reports a "Mean Total Remuneration GPG" of ~21.1% (2024-25)
+    computed from raw aggregated payroll across all reporting employers —
+    not derivable from the per-employer GPG percentages in the spreadsheet.
+    The spreadsheet does not publish the headcount column needed to weight
+    correctly. Customers who want the WGEA national headline should cite
+    the WGEA Scorecard directly (https://www.wgea.gov.au/publications/
+    employer-gender-pay-gaps-report).
+
+    What HEADLINE_GAP IS useful for: comparing one ANZSIC division to
+    another, identifying outlier industries, tracking median-employer
+    gaps over time. Per-industry mid-points within this dataset are
+    self-consistent and reproducible.
+    """
     return {
         "reporting_year": reporting_year,
         "anzsic_division": division,
-        "total_remuneration_gap_pct": _pct(sub[_EGPG_COL_AVG_TOTAL_REM].median()),
-        "base_salary_gap_pct": _pct(sub[_EGPG_COL_AVG_BASE].median()),
+        # mean(per-employer "Average ... GPG (%)") — the unweighted average
+        # of employer-level mean gaps. Closer to WGEA's "Mean GPG" than
+        # median was, but still not employee-weighted.
+        "total_remuneration_gap_pct": _pct(sub[_EGPG_COL_AVG_TOTAL_REM].mean()),
+        "base_salary_gap_pct": _pct(sub[_EGPG_COL_AVG_BASE].mean()),
+        # median(per-employer "Median ... GPG (%)") — robust middle-employer
+        # gap. Used by customers who want "what does the typical employer's
+        # GPG look like in this industry?"
         "median_total_rem_gap_pct": _pct(sub[_EGPG_COL_MED_TOTAL_REM].median()),
         "median_base_salary_gap_pct": _pct(sub[_EGPG_COL_MED_BASE].median()),
         "employer_count": int(sub[_EGPG_COL_EMPLOYER].notna().sum()),

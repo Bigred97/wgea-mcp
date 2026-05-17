@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.8] - 2026-05-18
+
+### Fixed — HEADLINE_GAP methodology (mean instead of median; docs sharpened)
+
+Customer-sim flagged `HEADLINE_GAP` returning 11.2% for the "All
+employers" total_remuneration_gap_pct when they expected ~21.1% (the
+WGEA Scorecard's published Mean Total Remuneration GPG). Investigation:
+
+- WGEA's published 21.1% is computed from raw aggregated payroll
+  (employee-weighted) — NOT derivable from the per-employer GPG
+  percentages in the published spreadsheet.
+- Our aggregator was using `median()` of the per-employer
+  "Average ... GPG (%)" column. Switched to `mean()` so the headline
+  measure approximates WGEA's Mean GPG concept (now 12.38% — closer
+  to WGEA's 21.1% but still not employee-weighted).
+- The `median_total_rem_gap_pct` / `median_base_salary_gap_pct`
+  measures continue to use median (unchanged) — they represent the
+  "typical employer's gap" rather than WGEA's national headline.
+
+Sharpened the YAML description to make the methodology gap explicit:
+HEADLINE_GAP is for cross-industry comparisons and per-employer
+distribution stats, NOT WGEA's national headline figure. Customers
+wanting WGEA's published 21.1% should cite the Scorecard directly
+(URL in the description).
+
+235 unit tests pass.
+
 ## [0.6.7] - 2026-05-18
 
 ### Fixed — CI wheel-verify assertion (curated dataset count drift)
