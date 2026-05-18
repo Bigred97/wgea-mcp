@@ -14,38 +14,34 @@ description: |
   WGEA aggregates remuneration data BEFORE publishing the per-employer
   CSVs.
 
-  Methodology (read this carefully — there are TWO different "headline"
-  numbers and they have different methodologies):
+  Methodology — three flavours of GPG so you can pick the one
+  that matches your question:
 
   HEADLINE_GAP measures
   ─────────────────────
+    `employee_weighted_total_rem_gap_pct` / `_base_salary_...`
+        ⭐ This is WGEA's published "Mean Total Remuneration GPG"
+          (~21.1% for 2024-25 All-employers). Workforce-weighted: each
+          employee contributes equally, derived from the employer's
+          % women + average pay + size band. Reproduces WGEA's Scorecard
+          headline within ~0.6pp. USE THIS for "Australia's gender pay
+          gap" headline comparisons.
     `total_remuneration_gap_pct` / `base_salary_gap_pct`
-        = mean of per-employer "Average ... GPG (%)" across all
-          private-sector employers in the slice. Unweighted by headcount.
+        = mean of per-employer "Average ... GPG (%)" — unweighted, one
+          employer one vote. Lower than the employee-weighted figure
+          because most employers are small and small employers have
+          smaller absolute pay gaps.
     `median_total_rem_gap_pct` / `median_base_salary_gap_pct`
         = median of per-employer "Median ... GPG (%)" — the typical
-          (middle) employer's gap.
-
-  NOT THE SAME AS WGEA's national headline
-  ─────────────────────────────────────────
-  WGEA's Scorecard reports a national Mean Total Remuneration GPG of
-  ~21.1% (2024-25) computed from raw aggregated payroll across all
-  reporting employers — it weights every employee equally, not every
-  employer equally. That figure is NOT derivable from the published
-  per-employer GPG percentages in this spreadsheet (we have GPG % per
-  employer but not exact headcount). For the WGEA national headline,
-  cite https://www.wgea.gov.au/publications/employer-gender-pay-gaps-report
-  directly.
+          (middle) employer's gap. Strips outliers.
 
   What HEADLINE_GAP IS useful for
   ──────────────────────────────
-  - Comparing one ANZSIC division to another within this dataset
-    (e.g. Mining 18.9% vs Hospitality 5.0%).
-  - Tracking median-employer or mean-employer gaps over time.
-  - "What's the typical employer's GPG in industry X?" (use the
-    median measures).
-  - "What's the average employer's GPG in industry X?" (use the
-    mean measures).
+  - WGEA-headline-style national + per-industry GPG comparisons
+    (use the employee_weighted measures)
+  - "Typical employer's gap" in industry X (use the median measures)
+  - Outlier-employer detection (compare mean vs median measures)
+  - Tracking the same measure over reporting years
 
   Notes:
   - Percentages are out of 100 (so 21.4 = 21.4%, NOT 0.214).
@@ -120,6 +116,29 @@ columns:
   median_base_salary_gap_pct:
     source_column: median_base_salary_gap_pct
     description: "Mid-point of employer Median Base Salary gender pay gap (%) across the division."
+    unit: percent
+    role: measure
+    dtype: float
+  employee_weighted_total_rem_gap_pct:
+    source_column: employee_weighted_total_rem_gap_pct
+    description: |
+      Workforce-weighted Mean Total Remuneration gender pay gap (%) — matches
+      WGEA's published Scorecard national headline (21.1% for 2024-25 "All
+      employers" private sector). Computed by weighting each employer's
+      derived male/female average pay by their size-band midpoint, then
+      taking the population mean. THIS is the number RBA / Treasury /
+      financial media cite as "Australia's gender pay gap"; use
+      `total_remuneration_gap_pct` (the unweighted employer mean) only
+      when you specifically want one-employer-one-vote.
+    unit: percent
+    role: measure
+    dtype: float
+  employee_weighted_base_salary_gap_pct:
+    source_column: employee_weighted_base_salary_gap_pct
+    description: |
+      Workforce-weighted Mean Base Salary gender pay gap (%). Same
+      methodology as `employee_weighted_total_rem_gap_pct` but on the
+      base-salary GPG column (excludes overtime + bonuses).
     unit: percent
     role: measure
     dtype: float

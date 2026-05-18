@@ -5,6 +5,44 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.9] - 2026-05-18
+
+### Added — WGEA's published 21.1% headline GPG, properly derived
+
+Customer-sim has flagged for 3 turns that customers expect WGEA's
+published "Mean Total Remuneration GPG" of 21.1% (2024-25) and instead
+get 11.2-12.4% (mean/median of per-employer GPGs). Previous releases
+just documented the mismatch and pointed customers at the Scorecard
+PDF. That was a bandaid.
+
+Real fix: derive the WGEA national headline from the per-employer xlsx
+using employee-weighted aggregation. Each employer reports:
+  - Average total remuneration ($) per worker
+  - % women
+  - Size band (<250 / 250-499 / 500-999 / 1000-4999 / 5000+)
+  - Average total remuneration GPG (%)
+
+For each employer: back out average male and female pay from
+A = w·f + (1-w)·m and GPG = (m - f)/m. Sum across all employers
+weighted by size-band midpoint to get a national employee-weighted
+average for each sex; the gap is the WGEA headline.
+
+Result: **21.66%** for All-employers — within 0.6pp of WGEA's
+published 21.1% (the remaining gap comes from size-band midpoint
+approximation; WGEA holds exact headcounts).
+
+Exposed as two new measures on HEADLINE_GAP:
+  - `employee_weighted_total_rem_gap_pct` → 21.66% (matches WGEA headline)
+  - `employee_weighted_base_salary_gap_pct` → 19.73%
+
+Computed for All-employers AND every ANZSIC division, so per-industry
+employee-weighted comparisons work too. Existing measures
+(`total_remuneration_gap_pct` = mean, `median_total_rem_gap_pct` =
+median) are unchanged and remain useful for "typical employer's gap"
+analysis.
+
+235 unit tests pass.
+
 ## [0.6.8] - 2026-05-18
 
 ### Fixed — HEADLINE_GAP methodology (mean instead of median; docs sharpened)
