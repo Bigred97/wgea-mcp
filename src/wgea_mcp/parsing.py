@@ -416,21 +416,53 @@ def parse_egpg_xlsx(workbook_bytes: bytes) -> tuple[pd.DataFrame, str]:
         )
 
     rows: list[dict[str, Any]] = []
-    # One row per ANZSIC division.
+    # Aggregate at THREE levels of size granularity so customers can ask
+    # "what's the headline GPG?" and "how does it split by employer size?"
+    # from the same dataset:
+    #   1. (division × employer_size_band)          — fine grain
+    #   2. (division × all_sizes)                   — current default rows
+    #   3. (All employers × employer_size_band)     — national size cut
+    #   4. (All employers × all_sizes)              — overall national
+    # `employer_size_band` of "all" is the sentinel for "any size".
+    ALL_SIZES = "all"
     for division, sub in df.groupby(_EGPG_COL_INDUSTRY, sort=True):
-        rows.append(_aggregate_industry_row(reporting_year, str(division), sub))
-    # Synthetic "All employers" national row — same metric, computed across
-    # the whole private-sector population. This is what answers "what's
-    # Australia's gender pay gap?" without an industry filter.
-    rows.append(_aggregate_industry_row(reporting_year, _ALL_EMPLOYERS_LABEL, df))
+        # Per-size-band rows within this division
+        if _EGPG_COL_SIZE in sub.columns:
+            for size, size_sub in sub.dropna(subset=[_EGPG_COL_SIZE]).groupby(
+                _EGPG_COL_SIZE, sort=True
+            ):
+                if len(size_sub) == 0:
+                    continue
+                rows.append(_aggregate_industry_row(
+                    reporting_year, str(division), size_sub, employer_size=str(size)
+                ))
+        # All-sizes row for this division
+        rows.append(_aggregate_industry_row(
+            reporting_year, str(division), sub, employer_size=ALL_SIZES
+        ))
+    # National per-size-band rows
+    if _EGPG_COL_SIZE in df.columns:
+        for size, size_sub in df.dropna(subset=[_EGPG_COL_SIZE]).groupby(
+            _EGPG_COL_SIZE, sort=True
+        ):
+            if len(size_sub) == 0:
+                continue
+            rows.append(_aggregate_industry_row(
+                reporting_year, _ALL_EMPLOYERS_LABEL, size_sub, employer_size=str(size)
+            ))
+    # Synthetic "All employers × all sizes" national row — what answers
+    # "what's Australia's gender pay gap?" without any filter.
+    rows.append(_aggregate_industry_row(
+        reporting_year, _ALL_EMPLOYERS_LABEL, df, employer_size=ALL_SIZES
+    ))
 
     out = pd.DataFrame(rows)
-    # Lexical sort matches the rest of the portfolio (alphabetised divisions
-    # with the All-employers row appearing as 'A...' before 'Agriculture').
-    # Pull All-employers to the top so HEADLINE_GAP latest() with no filter
-    # surfaces the national number first.
-    is_all = out["anzsic_division"] == _ALL_EMPLOYERS_LABEL
-    out = pd.concat([out[is_all], out[~is_all]], ignore_index=True)
+    # Pull "All employers × all_sizes" to the top so HEADLINE_GAP
+    # latest() with no filters surfaces the national number first.
+    is_all_emp = out["anzsic_division"] == _ALL_EMPLOYERS_LABEL
+    is_all_size = out["employer_size_band"] == ALL_SIZES
+    is_headline = is_all_emp & is_all_size
+    out = pd.concat([out[is_headline], out[~is_headline]], ignore_index=True)
     return out, reporting_year
 
 
@@ -510,6 +542,7 @@ def _aggregate_industry_row(
     reporting_year: str,
     division: str,
     sub: pd.DataFrame,
+    employer_size: str = "all",
 ) -> dict[str, Any]:
     """One HEADLINE_GAP row for an ANZSIC division (or the All-employers slice).
 
@@ -536,6 +569,7 @@ def _aggregate_industry_row(
     return {
         "reporting_year": reporting_year,
         "anzsic_division": division,
+        "employer_size_band": employer_size,
         # mean(per-employer "Average ... GPG (%)") — unweighted average
         # of employer-level mean gaps. One employer one vote.
         "total_remuneration_gap_pct": _pct(sub[_EGPG_COL_AVG_TOTAL_REM].mean()),

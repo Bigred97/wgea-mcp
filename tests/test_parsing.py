@@ -172,10 +172,14 @@ def test_egpg_xlsx_extracts_reporting_year(sample_egpg_xlsx_bytes):
 
 def test_egpg_xlsx_returns_industry_rows_plus_all(sample_egpg_xlsx_bytes):
     """Fixture has 3 industries (Mining, Finance, Construction) + 1 Commonwealth
-    row that must be filtered out. Aggregator yields 3 industry rows + 1
-    synthetic 'All employers' row = 4 rows."""
+    row that must be filtered out. Aggregator yields (division × size_band)
+    rows PLUS (division × all_sizes) summary PLUS national rollups.
+
+    The DIVISION SET (independent of size band) is still exactly 4:
+    Mining, Financial and Insurance Services, Construction, All employers.
+    Commonwealth public-sector rows must NOT leak through.
+    """
     df, _year = parse_egpg_xlsx(sample_egpg_xlsx_bytes)
-    assert len(df) == 4
     divisions = set(df["anzsic_division"])
     assert divisions == {
         "All employers",
@@ -183,8 +187,13 @@ def test_egpg_xlsx_returns_industry_rows_plus_all(sample_egpg_xlsx_bytes):
         "Financial and Insurance Services",
         "Construction",
     }
-    # Commonwealth public-sector row must NOT leak through.
     assert "Public Administration and Safety" not in divisions
+    # Every division has at least one 'all' size-band row (the summary).
+    all_sizes = df[df["employer_size_band"] == "all"]
+    assert len(all_sizes) == 4, (
+        f"expected 4 all-sizes rows (one per division + All employers), "
+        f"got {len(all_sizes)}: {sorted(all_sizes['anzsic_division'].tolist())}"
+    )
 
 
 def test_egpg_xlsx_all_employers_row_is_first(sample_egpg_xlsx_bytes):
@@ -214,12 +223,15 @@ def test_egpg_xlsx_employer_count_is_int(sample_egpg_xlsx_bytes):
 
 
 def test_egpg_xlsx_all_employers_count_sums_all_industries(sample_egpg_xlsx_bytes):
-    """The 'All employers' row's employer_count equals the sum of all
-    industry-row employer counts (every private-sector employer is counted
-    in both its industry and the national rollup)."""
+    """The 'All employers × all_sizes' row's employer_count equals the sum
+    of all (division × all_sizes) employer counts (every private-sector
+    employer is counted in both its industry and the national rollup)."""
     df, _year = parse_egpg_xlsx(sample_egpg_xlsx_bytes)
-    all_emp = df[df["anzsic_division"] == "All employers"].iloc[0]
-    industry_sum = df[df["anzsic_division"] != "All employers"]["employer_count"].sum()
+    all_sizes = df[df["employer_size_band"] == "all"]
+    all_emp = all_sizes[all_sizes["anzsic_division"] == "All employers"].iloc[0]
+    industry_sum = all_sizes[all_sizes["anzsic_division"] != "All employers"][
+        "employer_count"
+    ].sum()
     assert all_emp["employer_count"] == industry_sum
 
 

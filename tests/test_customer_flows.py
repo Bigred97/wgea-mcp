@@ -153,12 +153,15 @@ def df_headline_gap(sample_egpg_xlsx_bytes) -> pd.DataFrame:
 def test_australia_pay_gap_national_query(df_headline_gap):
     """Demo prompt: 'What's Australia's gender pay gap?'
 
-    Expectation: a single 'All employers' row carrying the national mid-point.
+    Expectation: the All-employers × all-sizes summary row carrying the
+    national mid-point. Since 0.6.10 added `employer_size_band` as a
+    dim, the All-employers slice spans the all-sizes summary + per-band
+    rows, so we pin the size dim to 'all' to land on the single summary.
     """
     cd = curated.get("HEADLINE_GAP")
     resp = shaping.build_response(
         cd=cd, df=df_headline_gap,
-        filters={"anzsic_division": "all"},
+        filters={"anzsic_division": "all", "employer_size_band": "all"},
         measures="total_remuneration_gap_pct",
         start_period=None, end_period=None,
         fmt="records", user_query={},
@@ -173,12 +176,13 @@ def test_australia_pay_gap_national_query(df_headline_gap):
 def test_mining_pay_gap_industry_query(df_headline_gap):
     """Demo prompt: 'What's the pay gap in mining?'
 
-    Should resolve 'mining' → 'Mining' and return one row.
+    Should resolve 'mining' → 'Mining' and return one row (pinning the
+    size-band dim to 'all' to get the division summary).
     """
     cd = curated.get("HEADLINE_GAP")
     resp = shaping.build_response(
         cd=cd, df=df_headline_gap,
-        filters={"anzsic_division": "mining"},
+        filters={"anzsic_division": "mining", "employer_size_band": "all"},
         measures="total_remuneration_gap_pct",
         start_period=None, end_period=None,
         fmt="records", user_query={},
@@ -186,7 +190,7 @@ def test_mining_pay_gap_industry_query(df_headline_gap):
     assert resp.row_count == 1
     obs = resp.records[0]
     assert obs.dimensions["anzsic_division"] == "Mining"
-    # Fixture's Mining median is 15.0%.
+    # Fixture's Mining mean (post-0.6.9 mean-vs-median switch) is 15.0%.
     assert obs.value == 15.0
 
 
@@ -195,7 +199,7 @@ def test_industry_query_via_anzsic_letter(df_headline_gap):
     cd = curated.get("HEADLINE_GAP")
     resp = shaping.build_response(
         cd=cd, df=df_headline_gap,
-        filters={"anzsic_division": "K"},
+        filters={"anzsic_division": "K", "employer_size_band": "all"},
         measures="total_remuneration_gap_pct",
         start_period=None, end_period=None,
         fmt="records", user_query={},
@@ -205,18 +209,22 @@ def test_industry_query_via_anzsic_letter(df_headline_gap):
 
 
 def test_headline_gap_default_returns_all_industries(df_headline_gap):
-    """No filter → all rows for the latest reporting year (one observation
-    per (industry × measure) cell). With 4 industries (3 + All) and 5 measures
-    (4 pct + employer_count), expect 20 observations."""
+    """No filter → all rows. Since 0.6.10 the dataframe also splits by
+    employer_size_band, so we pin it to 'all' to get the 4-division
+    summary rows. Each row carries 5 measures with data in the fixture
+    (4 gap pcts + employer_count); the employee_weighted measures need
+    the Employer-size-range column that the sample fixture doesn't carry,
+    so they're None and dropped from the response.
+    """
     cd = curated.get("HEADLINE_GAP")
     resp = shaping.build_response(
         cd=cd, df=df_headline_gap,
-        filters={}, measures=None,
+        filters={"employer_size_band": "all"},
+        measures=None,
         start_period=None, end_period=None,
         fmt="records", user_query={},
     )
-    assert resp.row_count == 20
-    # reporting_year populated on every observation
+    assert resp.row_count == 20  # 4 divisions × 5 measures with data
     assert all(r.reporting_year == "2024-25" for r in resp.records)
 
 

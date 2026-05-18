@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.10] - 2026-05-18
+
+### Added — `employer_size_band` dimension on HEADLINE_GAP
+
+Customer-feedback queue asked for "employer size band breakdowns
+(100-249 / 250-999 / 1000+)" on the headline pay-gap data. WGEA's
+xlsx already carries the `Employer size range` column per employer;
+the aggregator now groups by it AND by ANZSIC division, so HEADLINE_GAP
+emits both (division × all_sizes) summary rows and (division × size_band)
+detail rows. National × per-size-band rollups also computed.
+
+Filter via `employer_size_band` (defaults to 'all' for backward compat
+with the existing summary rows). Bands: `<250`, `250-499`, `500-999`,
+`1000-4999`, `5000+`.
+
+Verification — the WGEA Mean Total Remuneration GPG by employer size
+for 2024-25 All-employers:
+  <250 employers       : 21.08% (n=4,436 employers)
+  250-499 employers    : 20.95% (n=2,012)
+  500-999 employers    : 21.02% (n=1,045)
+  1000-4999 employers  : 24.40% (n=865)   ← widest gap (mid-size corporates)
+  5000+ employers      : 14.97% (n=133)   ← narrowest gap (largest employers)
+
+235 unit tests pass.
+
 ## [0.6.9] - 2026-05-18
 
 ### Added — WGEA's published 21.1% headline GPG, properly derived

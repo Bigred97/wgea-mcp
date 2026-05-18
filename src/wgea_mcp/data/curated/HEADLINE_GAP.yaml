@@ -95,6 +95,17 @@ columns:
     role: dimension
     dtype: string
     permissive: true
+  employer_size_band:
+    source_column: employer_size_band
+    description: |
+      Employer size band — WGEA's reporting bands ('<250', '250-499',
+      '500-999', '1000-4999', '5000+'). Defaults to 'all' (across all
+      bands). Customers filtering by band get the GPG distribution
+      isolated to that employer-size cohort (e.g. 'how does the gap
+      look for 5000+ employers vs <250?').
+    role: dimension
+    dtype: string
+    permissive: true
   total_remuneration_gap_pct:
     source_column: total_remuneration_gap_pct
     description: "Mid-point of employer Average Total Remuneration gender pay gap (%) across the division. WGEA's headline measure — includes base salary plus overtime, bonuses, additional payments, and the annualised full-time-equivalent salary of casual/part-time workers."
