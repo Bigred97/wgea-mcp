@@ -133,14 +133,28 @@ columns:
   employee_weighted_total_rem_gap_pct:
     source_column: employee_weighted_total_rem_gap_pct
     description: |
-      Workforce-weighted Mean Total Remuneration gender pay gap (%) — matches
-      WGEA's published Scorecard national headline (21.1% for 2024-25 "All
-      employers" private sector). Computed by weighting each employer's
-      derived male/female average pay by their size-band midpoint, then
-      taking the population mean. THIS is the number RBA / Treasury /
-      financial media cite as "Australia's gender pay gap"; use
-      `total_remuneration_gap_pct` (the unweighted employer mean) only
-      when you specifically want one-employer-one-vote.
+      Workforce-weighted Mean Total Remuneration gender pay gap (%) using
+      employer size-band midpoints as headcount proxies.
+
+      Scope depends on the `anzsic_division` filter:
+        - `anzsic_division='all'` (or no industry filter, all-sizes row) →
+          NATIONAL headline weighted across the whole private-sector
+          reporting population. Matches WGEA's published Scorecard
+          headline (21.1% for 2024-25; this dataset computes 21.66% from
+          the per-employer xlsx, within 0.6pp of WGEA's authoritative
+          figure).
+        - Any specific division ('Mining', 'K', 'Financial and Insurance
+          Services', etc.) → INDUSTRY-weighted gap, computed by re-weighting
+          only the employers in that ANZSIC division. Per-industry figures
+          can be much higher (Finance ~28%) or lower (Mining ~11%) than
+          the national headline because industries differ in their
+          gender composition and employer-size distribution. Per-industry
+          figures are NOT comparable directly to WGEA's national 21.1%.
+
+      Use this measure for "Australia's gender pay gap" headlines, OR for
+      per-industry comparisons WITHIN this dataset. Prefer
+      `total_remuneration_gap_pct` (unweighted, one-employer-one-vote)
+      only when you specifically want to ignore size weighting.
     unit: percent
     role: measure
     dtype: float
@@ -149,7 +163,9 @@ columns:
     description: |
       Workforce-weighted Mean Base Salary gender pay gap (%). Same
       methodology as `employee_weighted_total_rem_gap_pct` but on the
-      base-salary GPG column (excludes overtime + bonuses).
+      base-salary GPG column (excludes overtime + bonuses). Scope-vs-
+      filter behaviour is identical: 'all employers' = national; a
+      specific division = industry-weighted within that division.
     unit: percent
     role: measure
     dtype: float

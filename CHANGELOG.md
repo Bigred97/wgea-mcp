@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.12] - 2026-05-18
+
+### Docs — explicit national-vs-industry scope on employee-weighted measure
+
+Gateway integration confirmed the per-industry weighted behaviour works
+as expected (Mining 11.46%, Finance 28.17%, vs 21.66% national).
+Sharpened the `employee_weighted_total_rem_gap_pct` description to make
+this crystal-clear: when filtered to a specific ANZSIC division the
+gap is re-weighted using only that division's employers, so per-industry
+figures are NOT directly comparable to WGEA's published national 21.1%.
+Same scope notes added to `employee_weighted_base_salary_gap_pct`.
+
+No code change — docs-only release so the curated description in
+`describe_dataset('HEADLINE_GAP')` carries the warning into agent
+context windows.
+
+235 unit tests pass.
+
 ## [0.6.11] - 2026-05-18
 
 ### Added — `prewarm_curated()` + `wgea-mcp --warmup` CLI
