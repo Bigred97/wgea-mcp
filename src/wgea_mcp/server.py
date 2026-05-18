@@ -1296,7 +1296,90 @@ def list_curated() -> list[str]:
     return curated.list_ids()
 
 
+async def prewarm_curated(
+    dataset_ids: list[str] | None = None,
+    *,
+    max_concurrency: int = 2,
+    log: Any = None,
+) -> dict[str, str]:
+    """Warm the on-disk Parquet + SQLite cache for curated WGEA datasets
+    with bounded concurrency. Designed for gateway / Fly-worker startup.
+
+    Each cold WGEA dataflow does CKAN discovery → ZIP/xlsx download →
+    pandas parse → Parquet cache write. The WGEA Public Data File ZIP
+    is ~71MB and contains 7 CSVs. HEADLINE_GAP fetches a separate xlsx
+    from wgea.gov.au. Cold parse peaks 80-200MB transient.
+
+    Mirrors abs-mcp 0.11.14 / ato-mcp / apra-mcp's signature so gateway
+    init hooks call all four with the same shape.
+
+    Returns dict[dataset_id, "ok" | "error: ..."].
+    """
+    if dataset_ids is None:
+        dataset_ids = curated.list_ids()
+    known = set(curated.list_ids())
+    unknown = [d for d in dataset_ids if d not in known]
+    if unknown:
+        raise ValueError(
+            f"prewarm_curated received unknown dataset IDs: {unknown}. "
+            f"Valid IDs: {sorted(known)}."
+        )
+
+    sem = asyncio.Semaphore(max(1, int(max_concurrency)))
+    results: dict[str, str] = {}
+
+    async def _warm_one(ds_id: str) -> None:
+        async with sem:
+            if log:
+                log(f"[wgea-mcp prewarm] warming {ds_id}")
+            try:
+                await latest(dataset_id=ds_id)
+                results[ds_id] = "ok"
+                if log:
+                    log(f"[wgea-mcp prewarm] done    {ds_id}")
+            except Exception as e:
+                msg = f"{type(e).__name__}: {e!s}"[:200]
+                results[ds_id] = f"error: {msg}"
+                if log:
+                    log(f"[wgea-mcp prewarm] FAILED  {ds_id}: {msg}")
+
+    await asyncio.gather(*[_warm_one(d) for d in dataset_ids])
+    return results
+
+
 def main() -> None:
+    import argparse
+    import sys
+
+    parser = argparse.ArgumentParser(
+        prog="wgea-mcp",
+        description="MCP server for the Workplace Gender Equality Agency public data.",
+    )
+    parser.add_argument("--warmup", action="store_true",
+                        help="Warm the curated-dataset cache and exit.")
+    parser.add_argument("--warmup-concurrency", type=int, default=2,
+                        help="Max parallel dataflow warms (default 2).")
+    parser.add_argument("--warmup-only", type=str, default=None,
+                        help="Comma-separated curated dataset IDs.")
+    args = parser.parse_args()
+
+    if args.warmup:
+        ds_ids: list[str] | None = None
+        if args.warmup_only:
+            ds_ids = [s.strip() for s in args.warmup_only.split(",") if s.strip()]
+        results = asyncio.run(prewarm_curated(
+            ds_ids,
+            max_concurrency=args.warmup_concurrency,
+            log=lambda m: print(m, file=sys.stderr, flush=True),
+        ))
+        fails = {k: v for k, v in results.items() if not v.startswith("ok")}
+        if fails:
+            print(
+                f"[wgea-mcp prewarm] {len(fails)} dataflow(s) failed: {sorted(fails)}",
+                file=sys.stderr,
+            )
+        sys.exit(1 if fails else 0)
+
     mcp.run(transport="stdio")
 
 

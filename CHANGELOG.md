@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.11] - 2026-05-18
+
+### Added — `prewarm_curated()` + `wgea-mcp --warmup` CLI
+
+Ports abs-mcp 0.11.14's prewarm pattern. Same shape across the
+portfolio so gateway init hooks call sister prewarms uniformly.
+
+```python
+from wgea_mcp import server as wgea_srv
+await wgea_srv.prewarm_curated(max_concurrency=2, log=print)
+```
+
+CLI:
+```
+wgea-mcp --warmup [--warmup-concurrency 2] [--warmup-only HEADLINE_GAP,...]
+```
+
+235 unit tests pass.
+
 ## [0.6.10] - 2026-05-18
 
 ### Added — `employer_size_band` dimension on HEADLINE_GAP
