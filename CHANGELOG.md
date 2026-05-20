@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.13] - 2026-05-21
+
+### Added
+
+- Add MCP Registry ownership marker (`mcp-name: io.ausdata/wgea-mcp`) to the
+  README so the server can be listed under the verified `io.ausdata` namespace.
+
 ## [0.6.12] - 2026-05-18
 
 ### Docs — explicit national-vs-industry scope on employee-weighted measure

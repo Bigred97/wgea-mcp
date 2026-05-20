@@ -1,5 +1,7 @@
 # wgea-mcp
 
+mcp-name: io.ausdata/wgea-mcp
+
 [![PyPI](https://img.shields.io/pypi/v/wgea-mcp.svg)](https://pypi.org/project/wgea-mcp/)
 [![Python](https://img.shields.io/pypi/pyversions/wgea-mcp.svg)](https://pypi.org/project/wgea-mcp/)
 [![License](https://img.shields.io/pypi/l/wgea-mcp.svg)](https://github.com/Bigred97/wgea-mcp/blob/main/LICENSE)
