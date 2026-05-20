@@ -9,6 +9,8 @@
 
 **MCP server for the Workplace Gender Equality Agency (WGEA) public data file.** Plain-English access to per-employer workforce composition, gender-equality policy answers, parental leave, flexible work, and harm-prevention data — every WGEA-reporting employer in Australia (~9,600 employers), every year, from a single `uvx` command.
 
+> **Hosted access?** For cross-source queries, webhooks, an always-on REST API, and a uniform response envelope across all 9 sources, see **[ausdata.io](https://ausdata.io)** — free tier available (500 calls/mo, no card).
+
 ```text
 "What's the gender breakdown at Commonwealth Bank?"
 "Which mining companies set gender targets in 2024-25?"
