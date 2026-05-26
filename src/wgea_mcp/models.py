@@ -70,6 +70,13 @@ class Observation(BaseModel):
     """One row of returned data."""
 
     reporting_year: str | None = None  # e.g. "2024-25"
+    # 0.6.14: also surface `period` as a portfolio-uniform alias for
+    # reporting_year. Cross-sister consumers (the ausdata-api gateway,
+    # tools that iterate any DataResponse) expect a `period` field on
+    # every Observation. WGEA's annual cadence makes period == reporting_
+    # year exactly — the field is populated mirror-style at construction
+    # time via shaping.py.
+    period: str | None = None
     value: float | None = None
     measure: str | None = None
     dimensions: dict[str, Any] = Field(default_factory=dict)

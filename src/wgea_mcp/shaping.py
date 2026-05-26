@@ -489,6 +489,10 @@ def shape_wide(
             records.append(
                 Observation(
                     reporting_year=period_val,
+                    # 0.6.14: mirror reporting_year into `period` so
+                    # portfolio-uniform consumers (gateway iterators)
+                    # see the same envelope shape as every other sister.
+                    period=period_val,
                     value=value,
                     measure=mk,
                     dimensions=dim_vals,

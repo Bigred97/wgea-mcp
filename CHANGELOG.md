@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.14] - 2026-05-26
+
+### Added
+- `Observation.period` field mirrors `reporting_year` so portfolio-uniform
+  consumers see the canonical envelope shape. WGEA is annual so
+  `period == reporting_year` exactly (e.g. `"2024-25"`). The gateway and
+  any cross-sister iterator can now read `record.period` on every sister
+  without special-casing WGEA's `reporting_year`-only convention.
+
+### Note
+- WGEA publishes only the CURRENT-year `Employer-Gender-Pay-Gaps-
+  Spreadsheet.xlsx` at a stable URL; previous-year spreadsheets are
+  overwritten and not preserved on the Wayback Machine. Historical
+  multi-year coverage of HEADLINE_GAP would require parsing WGEA's raw
+  Public Data File per-employer CSVs (already curated in 7 sister
+  datasets) and re-running WGEA's published aggregation methodology —
+  documented as out-of-scope for this release.
+
+### Internal
+- 235 / 235 tests passing.
+
 ## [0.6.13] - 2026-05-21
 
 ### Added
