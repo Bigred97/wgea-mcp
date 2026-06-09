@@ -611,7 +611,7 @@ async def search_datasets(
 ) -> list[DatasetSummary]:
     """Fuzzy-search the curated WGEA dataset catalog.
 
-    All seven curated datasets cover the WGEA Public Data File: per-employer
+    All eight curated datasets cover the WGEA Public Data File: per-employer
     workforce composition, manager movements, gender-equality policy
     answers, parental-leave + flexible-work policies, harm-prevention
     policies, employee support, and workplace overview.
@@ -1306,9 +1306,10 @@ async def prewarm_curated(
     with bounded concurrency. Designed for gateway / Fly-worker startup.
 
     Each cold WGEA dataflow does CKAN discovery → ZIP/xlsx download →
-    pandas parse → Parquet cache write. The WGEA Public Data File ZIP
-    is ~71MB and contains 7 CSVs. HEADLINE_GAP fetches a separate xlsx
-    from wgea.gov.au. Cold parse peaks 80-200MB transient.
+    pandas parse → Parquet cache write. There are 8 curated datasets:
+    the WGEA Public Data File ZIP is ~71MB and contains the 7 thematic
+    CSVs, and HEADLINE_GAP (the 8th) fetches a separate xlsx from
+    wgea.gov.au. Cold parse peaks 80-200MB transient.
 
     Mirrors abs-mcp 0.11.14 / ato-mcp / apra-mcp's signature so gateway
     init hooks call all four with the same shape.

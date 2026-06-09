@@ -35,7 +35,7 @@ def test_data_response_attribution_string():
     )
     assert "Workplace Gender Equality Agency" in r.attribution
     assert "Creative Commons Attribution 3.0 Australia" in r.attribution
-    assert r.source == "Workplace Gender Equality Agency"
+    assert r.source == "Workplace Gender Equality Agency (WGEA)"
 
 
 def test_data_response_defaults():

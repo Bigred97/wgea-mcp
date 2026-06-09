@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.15] - 2026-06-09
+
+### Fixed
+- Restore the 8 curated dataset YAMLs (`src/wgea_mcp/data/curated/*.yaml`)
+  that were missing from the working tree, so `curated._load_all()` returns
+  all 8 datasets (including `HEADLINE_GAP`) instead of 0.
+
+### Changed
+- Correct the dataset count in the `search_datasets` docstring and the
+  prewarm comment (7 → 8) now that `HEADLINE_GAP` is curated.
+- `source` default normalized to `"Workplace Gender Equality Agency (WGEA)"`
+  (was the short form) to match the trust contract.
+
 ## [0.6.14] - 2026-05-26
 
 ### Added

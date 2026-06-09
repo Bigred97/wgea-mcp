@@ -6,7 +6,7 @@ government MCPs gets a uniform shape.
 
 WGEA-specific differences:
 - attribution names WGEA and CC-BY 3.0 AU.
-- DataResponse.source defaults to "Workplace Gender Equality Agency"
+- DataResponse.source defaults to "Workplace Gender Equality Agency (WGEA)"
 - DataResponse.source_url points at the WGEA data.gov.au landing page
 - DataResponse.download_url surfaces the actual ZIP URL used (post-discovery)
 - DataResponse.reporting_year — the WGEA reporting year (e.g. "2024-25") the
@@ -108,7 +108,7 @@ class DataResponse(BaseModel):
     row_count: int = 0
     records: list[Any] = Field(default_factory=list)
     csv: str | None = None
-    source: str = "Workplace Gender Equality Agency"
+    source: str = "Workplace Gender Equality Agency (WGEA)"
     attribution: str = _WGEA_ATTRIBUTION
     retrieved_at: datetime
     source_url: str  # canonical WGEA data.gov.au landing page

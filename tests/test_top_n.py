@@ -107,7 +107,7 @@ async def test_top_n_reporting_year_filter(mocked_data):
 async def test_top_n_envelope_preserved(mocked_data):
     """Trust-contract fields survive the rank-and-slice transformation."""
     r = await server.top_n("WORKFORCE_COMPOSITION", "n_employees", n=3)
-    assert r.source == "Workplace Gender Equality Agency"
+    assert r.source == "Workplace Gender Equality Agency (WGEA)"
     assert "Creative Commons" in r.attribution
     assert r.source_url
 
