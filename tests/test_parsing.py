@@ -250,6 +250,7 @@ def test_egpg_xlsx_corrupt_body_raises():
 def test_egpg_xlsx_missing_column_raises(tmp_path):
     """If WGEA renames a column we want a loud ParseError, not a silent drop."""
     import openpyxl
+
     from wgea_mcp.parsing import ParseError
     wb = openpyxl.Workbook()
     ws = wb.active
@@ -278,6 +279,7 @@ def test_egpg_xlsx_no_private_sector_raises(tmp_path):
     """A spreadsheet with only Commonwealth rows can't yield a meaningful
     mid-point — must raise rather than emit an empty 'All employers' row."""
     import openpyxl
+
     from wgea_mcp.parsing import ParseError
     wb = openpyxl.Workbook()
     ws = wb.active

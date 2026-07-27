@@ -1,7 +1,6 @@
 """CKAN discovery — package_show parsing, year resolution, seed fallback."""
 from __future__ import annotations
 
-
 import pytest
 
 from wgea_mcp import discovery
@@ -130,6 +129,6 @@ async def test_resolve_latest_zip_no_match_no_seed_raises(client, respx_mock, mo
     respx_mock.get(
         "https://data.gov.au/data/api/3/action/package_show?id=wgea-dataset"
     ).respond(200, content=b'{"success": true, "result": {"resources": []}}')
-    monkeypatch.setattr(discovery, "load_seed_manifest", lambda: {})
+    monkeypatch.setattr(discovery, "load_seed_manifest", dict)
     with pytest.raises(DiscoveryError):
         await resolve_latest_zip(client)

@@ -1,7 +1,7 @@
 """Pydantic model shape + defaults."""
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 
 from wgea_mcp.models import (
     ColumnDetail,
@@ -30,7 +30,7 @@ def test_observation_defaults():
 def test_data_response_attribution_string():
     r = DataResponse(
         dataset_id="X", dataset_name="X",
-        retrieved_at=datetime.now(timezone.utc),
+        retrieved_at=datetime.now(UTC),
         source_url="https://data.gov.au/",
     )
     assert "Workplace Gender Equality Agency" in r.attribution
@@ -41,7 +41,7 @@ def test_data_response_attribution_string():
 def test_data_response_defaults():
     r = DataResponse(
         dataset_id="X", dataset_name="X",
-        retrieved_at=datetime.now(timezone.utc),
+        retrieved_at=datetime.now(UTC),
         source_url="https://data.gov.au/",
     )
     assert r.row_count == 0

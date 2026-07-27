@@ -73,12 +73,11 @@ class Cache:
     async def get(self, key: str, ttl: timedelta) -> bytes | None:
         await self._ensure_init()
         cutoff = time.time() - ttl.total_seconds()
-        async with aiosqlite.connect(self.db_path) as conn:
-            async with conn.execute(
-                "SELECT payload FROM http_cache WHERE cache_key = ? AND cached_at >= ?",
-                (key, cutoff),
-            ) as cur:
-                row = await cur.fetchone()
+        async with aiosqlite.connect(self.db_path) as conn, conn.execute(
+            "SELECT payload FROM http_cache WHERE cache_key = ? AND cached_at >= ?",
+            (key, cutoff),
+        ) as cur:
+            row = await cur.fetchone()
         return row[0] if row else None
 
     async def get_stale(self, key: str) -> tuple[bytes, float] | None:
@@ -90,12 +89,11 @@ class Cache:
         it in `DataResponse.stale_reason`.
         """
         await self._ensure_init()
-        async with aiosqlite.connect(self.db_path) as conn:
-            async with conn.execute(
-                "SELECT payload, cached_at FROM http_cache WHERE cache_key = ?",
-                (key,),
-            ) as cur:
-                row = await cur.fetchone()
+        async with aiosqlite.connect(self.db_path) as conn, conn.execute(
+            "SELECT payload, cached_at FROM http_cache WHERE cache_key = ?",
+            (key,),
+        ) as cur:
+            row = await cur.fetchone()
         return (row[0], row[1]) if row else None
 
     async def set(
@@ -136,9 +134,8 @@ class Cache:
     async def get_cached_at(self, key: str) -> float | None:
         """Return cached_at unix timestamp for a key, or None if missing."""
         await self._ensure_init()
-        async with aiosqlite.connect(self.db_path) as conn:
-            async with conn.execute(
-                "SELECT cached_at FROM http_cache WHERE cache_key = ?", (key,)
-            ) as cur:
-                row = await cur.fetchone()
+        async with aiosqlite.connect(self.db_path) as conn, conn.execute(
+            "SELECT cached_at FROM http_cache WHERE cache_key = ?", (key,)
+        ) as cur:
+            row = await cur.fetchone()
         return row[0] if row else None

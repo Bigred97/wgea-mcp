@@ -8,7 +8,6 @@ hammer data.gov.au.
 """
 from __future__ import annotations
 
-
 import pytest
 
 from wgea_mcp.cache import Cache
@@ -96,9 +95,9 @@ async def test_live_workforce_composition_parses(live_client):
 @pytest.mark.live
 async def test_live_get_data_cba_latest(live_client):
     """End-to-end: server-side get_data for CBA via live discovery + fetch + shape."""
+    from wgea_mcp import curated
     from wgea_mcp.parsing import read_csv_from_zip
     from wgea_mcp.shaping import build_response
-    from wgea_mcp import curated
 
     resolved = await resolve_latest_zip(live_client)
     body = await live_client.fetch_resource(resolved.url, kind="data")
@@ -121,9 +120,9 @@ async def test_live_get_data_cba_latest(live_client):
 @pytest.mark.live
 async def test_live_attribution_string(live_client):
     """Live response carries the CC-BY 3.0 AU attribution."""
+    from wgea_mcp import curated
     from wgea_mcp.parsing import read_csv_from_zip
     from wgea_mcp.shaping import build_response
-    from wgea_mcp import curated
 
     resolved = await resolve_latest_zip(live_client)
     body = await live_client.fetch_resource(resolved.url, kind="data")

@@ -527,7 +527,7 @@ def _build_row_predicate(
     return predicate
 
 
-def _PREDICATE_REJECT_ALL(_row: dict[str, str]) -> bool:  # noqa: N802
+def _PREDICATE_REJECT_ALL(_row: dict[str, str]) -> bool:
     return False
 
 
@@ -736,7 +736,7 @@ async def describe_dataset(
             resolved = await resolve_latest_zip(client)
             return resolved.reporting_year_label
         year_label = await asyncio.wait_for(_resolve_year(), timeout=1.5)
-    except (TimeoutError, asyncio.TimeoutError, Exception):
+    except (TimeoutError, Exception):
         year_label = None
 
     return DatasetDetail(

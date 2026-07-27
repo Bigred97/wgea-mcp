@@ -28,7 +28,7 @@ from __future__ import annotations
 
 import json
 import math
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from importlib import resources
 from pathlib import Path
 from typing import Any
@@ -81,7 +81,7 @@ def _employer_scorer(s1, s2, **kwargs):
     substring against the typo).
     """
     try:
-        from rapidfuzz import fuzz  # noqa: F401 — false positive; used after the try-block
+        from rapidfuzz import fuzz
     except ImportError:  # pragma: no cover — rapidfuzz is a required dep
         return 0.0
     return (fuzz.WRatio(s1, s2, **kwargs) + fuzz.partial_ratio(s1, s2, **kwargs)) / 2
@@ -249,7 +249,10 @@ def fuzzy_match_employer(
     above 50, so noise from completely-unrelated matches is suppressed.
     """
     try:
-        from rapidfuzz import fuzz, process  # noqa: F401 — false positive; both used after the try-block
+        from rapidfuzz import (  # noqa: F401 — false positive; both used after the try-block
+            fuzz,
+            process,
+        )
     except ImportError:  # pragma: no cover — rapidfuzz is a required dep
         return [], []
 
@@ -623,7 +626,7 @@ def build_response(
             row_count=0,
             records=[],
             csv="" if fmt == "csv" else None,
-            retrieved_at=datetime.now(timezone.utc),
+            retrieved_at=datetime.now(UTC),
             source_url=source_url or cd.source_url,
             download_url=download_url,
             stale=stale,
@@ -686,7 +689,7 @@ def build_response(
         row_count=len(records),
         records=out_records,
         csv=csv_text,
-        retrieved_at=datetime.now(timezone.utc),
+        retrieved_at=datetime.now(UTC),
         source_url=source_url or cd.source_url,
         download_url=download_url,
         did_you_mean=suggestions,

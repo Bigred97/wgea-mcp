@@ -18,7 +18,6 @@ from typing import Literal
 
 import yaml
 
-
 Layout = Literal["wide", "long"]
 
 

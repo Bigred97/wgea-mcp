@@ -137,7 +137,7 @@ class WGEAClient:
     async def __aenter__(self) -> WGEAClient:
         return self
 
-    async def __aexit__(self, *exc: Any) -> None:
+    async def __aexit__(self, *exc: object) -> None:
         await self.aclose()
 
     async def fetch_resource(self, url: str, *, kind: CacheKind = "data") -> bytes:

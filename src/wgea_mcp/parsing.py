@@ -121,14 +121,13 @@ def read_csv_from_zip(
     """
     member = _resolve_member(zip_bytes, member_pattern)
     try:
-        with zipfile.ZipFile(BytesIO(zip_bytes)) as zf:
-            with zf.open(member) as fp:
-                df = pd.read_csv(
-                    fp,
-                    dtype=dtype,
-                    nrows=max_rows,
-                    low_memory=False,
-                )
+        with zipfile.ZipFile(BytesIO(zip_bytes)) as zf, zf.open(member) as fp:
+            df = pd.read_csv(
+                fp,
+                dtype=dtype,
+                nrows=max_rows,
+                low_memory=False,
+            )
     except (zipfile.BadZipFile, OSError, UnicodeDecodeError) as e:
         raise ParseError(
             f"could not read {member!r} from ZIP (corrupt or truncated): {e}"
@@ -183,32 +182,31 @@ def stream_csv_from_zip(
         )
     member = _resolve_member(zip_bytes, member_pattern)
     try:
-        with zipfile.ZipFile(BytesIO(zip_bytes)) as zf:
-            with zf.open(member) as raw_fp:
-                text_fp = io.TextIOWrapper(raw_fp, encoding="utf-8", newline="")
-                reader = csv.reader(text_fp)
-                try:
-                    headers = next(reader)
-                except StopIteration as e:
-                    raise ParseError(
-                        f"CSV member {member!r} is empty (no header row)."
-                    ) from e
-                headers = [_normalize_header(h) for h in headers]
-                n_cols = len(headers)
-                collected: list[list[str | None]] = []
-                for row in reader:
-                    # Tolerate ragged rows: pad with None or truncate to header width.
-                    if len(row) < n_cols:
-                        row = row + [None] * (n_cols - len(row))  # type: ignore[list-item]
-                    elif len(row) > n_cols:
-                        row = row[:n_cols]
-                    if row_predicate is not None:
-                        row_dict = dict(zip(headers, row, strict=False))
-                        if not row_predicate(row_dict):
-                            continue
-                    collected.append(row)
-                    if len(collected) >= max_rows:
-                        break
+        with zipfile.ZipFile(BytesIO(zip_bytes)) as zf, zf.open(member) as raw_fp:
+            text_fp = io.TextIOWrapper(raw_fp, encoding="utf-8", newline="")
+            reader = csv.reader(text_fp)
+            try:
+                headers = next(reader)
+            except StopIteration as e:
+                raise ParseError(
+                    f"CSV member {member!r} is empty (no header row)."
+                ) from e
+            headers = [_normalize_header(h) for h in headers]
+            n_cols = len(headers)
+            collected: list[list[str | None]] = []
+            for row in reader:
+                # Tolerate ragged rows: pad with None or truncate to header width.
+                if len(row) < n_cols:
+                    row = row + [None] * (n_cols - len(row))  # type: ignore[list-item]
+                elif len(row) > n_cols:
+                    row = row[:n_cols]
+                if row_predicate is not None:
+                    row_dict = dict(zip(headers, row, strict=False))
+                    if not row_predicate(row_dict):
+                        continue
+                collected.append(row)
+                if len(collected) >= max_rows:
+                    break
     except (zipfile.BadZipFile, OSError, UnicodeDecodeError) as e:
         raise ParseError(
             f"could not read {member!r} from ZIP (corrupt or truncated): {e}"

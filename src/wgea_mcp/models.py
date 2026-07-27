@@ -25,7 +25,6 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-
 _WGEA_ATTRIBUTION = (
     "Source: Workplace Gender Equality Agency. "
     "Licensed under Creative Commons Attribution 3.0 Australia "
