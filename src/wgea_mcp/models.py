@@ -13,6 +13,10 @@ WGEA-specific differences:
   rows came from. WGEA releases one new reporting year per annual cycle.
 - DataResponse.stale + stale_reason — true when the live CKAN call failed
   and we served from the bundled seed manifest.
+- DataResponse.caveat — comparability warning surfaced on the response
+  itself (mirrors apra-mcp's `framework` pattern) when a query is scoped
+  to a dimension value that isn't directly comparable to the dataset's
+  national/headline figure, e.g. HEADLINE_GAP's per-industry cut.
 """
 from __future__ import annotations
 
@@ -116,6 +120,13 @@ class DataResponse(BaseModel):
     did_you_mean: list[str] = Field(default_factory=list)  # fuzzy-match hints
     stale: bool = False
     stale_reason: str | None = None
+    # Set when the query is scoped to a specific dimension value that is NOT
+    # directly comparable to the dataset's headline/national figure (e.g.
+    # HEADLINE_GAP's per-`anzsic_division` employee-weighted GPG vs the
+    # national "All employers" figure — different weighting methodology).
+    # Carried on the response itself (not just describe() prose) so a caller
+    # who never reads the docs still sees the warning where the data lands.
+    caveat: str | None = None
     # Set when `latest()` (or get_data's max_rows cap) truncated a larger
     # post-filter result. Original row count goes here so agents can detect
     # + surface the cap.

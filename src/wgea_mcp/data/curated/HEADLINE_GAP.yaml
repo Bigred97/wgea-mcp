@@ -60,6 +60,15 @@ format: xlsx_aggregated
 layout: wide
 cache_kind: data
 period_column: reporting_year
+industry_caveat: |
+  Per-industry figures use a different weighting methodology (re-weighted
+  only across employers in that ANZSIC division) than WGEA's national
+  headline and are NOT directly comparable to the national "All employers"
+  figure. Per-industry employee-weighted GPG can be materially higher
+  (e.g. Finance ~28%) or lower (e.g. Mining ~11%) than the national
+  headline (~21.1%) because industries differ in gender composition and
+  employer-size distribution. Use this measure for within-dataset
+  industry comparisons, not as a stand-in for "Australia's gender pay gap".
 search_keywords:
   - headline
   - pay gap
@@ -100,12 +109,15 @@ columns:
     description: |
       Employer size band — WGEA's reporting bands ('<250', '250-499',
       '500-999', '1000-4999', '5000+'). Defaults to 'all' (across all
-      bands). Customers filtering by band get the GPG distribution
+      bands) when omitted — the response then carries the single
+      all-bands aggregate row rather than the five per-band fragment
+      rows. Customers filtering by band get the GPG distribution
       isolated to that employer-size cohort (e.g. 'how does the gap
       look for 5000+ employers vs <250?').
     role: dimension
     dtype: string
     permissive: true
+    default_value: "all"
   total_remuneration_gap_pct:
     source_column: total_remuneration_gap_pct
     description: "Mid-point of employer Average Total Remuneration gender pay gap (%) across the division. WGEA's headline measure — includes base salary plus overtime, bonuses, additional payments, and the annualised full-time-equivalent salary of casual/part-time workers."

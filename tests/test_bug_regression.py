@@ -627,3 +627,118 @@ async def test_streaming_end_period_excludes_out_of_range_year(monkeypatch):
         )
     finally:
         await server.reset_client_for_tests()
+
+
+# -------------------------------------------------------------------------
+# Bug: HEADLINE_GAP `employer_size_band` did not default to 'all' as
+# documented. Omitting the filter left every per-band fragment row
+# (<250, 250-499/1000-2499, 500-999, 1000-4999, 5000+) unfiltered alongside
+# the genuine all-bands aggregate — which a normal `limit`/`max_rows` could
+# silently push out of the returned rows entirely. Reproduced live against
+# api.ausdata.io/v1/data/wgea/HEADLINE_GAP?anzsic_division=Mining&limit=6:
+# only the '1000-4999' fragment's 6 measures came back, the true all-bands
+# aggregate never appeared. Fixed via CuratedColumn.default_value, injected
+# as an implicit filter in shaping._apply_filters for any dimension the
+# caller omits entirely.
+# -------------------------------------------------------------------------
+@pytest.fixture
+def df_headline_gap(sample_egpg_xlsx_bytes) -> pd.DataFrame:
+    df, _year = parsing.parse_egpg_xlsx(sample_egpg_xlsx_bytes)
+    return df
+
+
+def test_headline_gap_omitted_size_band_returns_all_bands_aggregate(df_headline_gap):
+    """anzsic_division filter with NO employer_size_band filter must resolve
+    to the single genuine all-bands aggregate row, not a narrow per-band
+    fragment (the pre-fix behaviour: every fragment row unfiltered).
+    """
+    cd = curated.get("HEADLINE_GAP")
+    resp = shaping.build_response(
+        cd=cd, df=df_headline_gap,
+        filters={"anzsic_division": "Mining"},  # employer_size_band OMITTED
+        measures="total_remuneration_gap_pct",
+        start_period=None, end_period=None,
+        fmt="records", user_query={},
+    )
+    assert resp.row_count == 1, (
+        f"expected the single all-bands aggregate row, got {resp.row_count} "
+        "rows — employer_size_band is not defaulting to 'all'"
+    )
+    obs = resp.records[0]
+    assert obs.dimensions["anzsic_division"] == "Mining"
+    assert obs.dimensions["employer_size_band"] == "all", (
+        f"expected the all-bands sentinel row, got a fragment: {obs.dimensions}"
+    )
+
+
+def test_headline_gap_omitted_size_band_default_matches_explicit_all(df_headline_gap):
+    """Omitting employer_size_band must produce byte-identical results to
+    explicitly passing employer_size_band='all' — confirms the default is
+    wired to the same value the docs promise, not just "some" row.
+    """
+    cd = curated.get("HEADLINE_GAP")
+    implicit = shaping.build_response(
+        cd=cd, df=df_headline_gap,
+        filters={"anzsic_division": "Mining"},
+        measures="total_remuneration_gap_pct",
+        start_period=None, end_period=None,
+        fmt="records", user_query={},
+    )
+    explicit = shaping.build_response(
+        cd=cd, df=df_headline_gap,
+        filters={"anzsic_division": "Mining", "employer_size_band": "all"},
+        measures="total_remuneration_gap_pct",
+        start_period=None, end_period=None,
+        fmt="records", user_query={},
+    )
+    assert implicit.row_count == explicit.row_count == 1
+    assert implicit.records[0].value == explicit.records[0].value
+
+
+# -------------------------------------------------------------------------
+# Bug: the industry-vs-national comparability warning existed only in
+# describe()'s column-description prose, never on the actual /v1/data
+# response body — a caller who queries an industry cut via get_data/latest
+# and never calls describe_dataset got no warning at all. Fixed via
+# DataResponse.caveat + CuratedDataset.industry_caveat, set whenever
+# anzsic_division is scoped to anything other than 'All employers'.
+# -------------------------------------------------------------------------
+def test_headline_gap_industry_scope_carries_comparability_caveat(df_headline_gap):
+    cd = curated.get("HEADLINE_GAP")
+    resp = shaping.build_response(
+        cd=cd, df=df_headline_gap,
+        filters={"anzsic_division": "Mining"},
+        measures="employee_weighted_total_rem_gap_pct",
+        start_period=None, end_period=None,
+        fmt="records", user_query={},
+    )
+    assert resp.caveat, "industry-scoped HEADLINE_GAP response must carry a caveat"
+    assert "not directly comparable" in resp.caveat.lower()
+    assert "national" in resp.caveat.lower() or "all employers" in resp.caveat.lower()
+
+
+def test_headline_gap_national_scope_carries_no_caveat(df_headline_gap):
+    """The national 'All employers' row IS the headline — no caveat needed."""
+    cd = curated.get("HEADLINE_GAP")
+    resp = shaping.build_response(
+        cd=cd, df=df_headline_gap,
+        filters={"anzsic_division": "All employers"},
+        measures="employee_weighted_total_rem_gap_pct",
+        start_period=None, end_period=None,
+        fmt="records", user_query={},
+    )
+    assert resp.caveat is None
+
+
+def test_headline_gap_no_anzsic_filter_carries_no_caveat(df_headline_gap):
+    """No anzsic_division filter at all (every division returned) — no
+    single-industry comparability caveat applies."""
+    cd = curated.get("HEADLINE_GAP")
+    resp = shaping.build_response(
+        cd=cd, df=df_headline_gap,
+        filters={},
+        measures="employee_weighted_total_rem_gap_pct",
+        start_period=None, end_period=None,
+        fmt="records", user_query={},
+    )
+    assert resp.caveat is None

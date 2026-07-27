@@ -33,6 +33,14 @@ class CuratedColumn:
     role: str = "measure"  # "dimension" | "measure" | "id"
     dtype: str | None = None
     permissive: bool = False
+    # Value applied as an implicit filter when the caller omits this
+    # dimension from `filters` entirely. Only meaningful for dimension
+    # columns whose source data carries an explicit "any value" sentinel
+    # row (e.g. HEADLINE_GAP's `employer_size_band` = "all"). Without this,
+    # omitting the filter left every fine-grained fragment unfiltered,
+    # which could silently push the true aggregate row out of a capped
+    # response — see 0.6.x employer_size_band default-fragment bug.
+    default_value: str | None = None
 
 
 @dataclass(frozen=True)
@@ -75,6 +83,14 @@ class CuratedDataset:
     # Direct fetch URL for xlsx_aggregated datasets. csv_in_zip datasets
     # leave this None — they resolve URLs at request time via CKAN discovery.
     download_url: str | None = None
+    # Comparability caveat surfaced on DataResponse (not just describe()
+    # prose) whenever a query is scoped to a specific `anzsic_division`
+    # value other than the dataset's national "All employers" row. Only
+    # HEADLINE_GAP sets this today — its per-industry employee-weighted
+    # figures use a different weighting methodology than the national
+    # headline and are not directly comparable to it. None means "no
+    # caveat applies to this dataset".
+    industry_caveat: str | None = None
 
 
 _REGISTRY: dict[str, CuratedDataset] | None = None
@@ -98,6 +114,7 @@ def _parse_column(key: str, raw: dict) -> CuratedColumn:
         raise ValueError(f"Column {key!r} must be a mapping, got {type(raw).__name__}")
     if "source_column" not in raw:
         raise ValueError(f"Column {key!r} missing required field 'source_column'")
+    default_value = raw.get("default_value")
     return CuratedColumn(
         key=key,
         source_column=str(raw["source_column"]),
@@ -106,6 +123,7 @@ def _parse_column(key: str, raw: dict) -> CuratedColumn:
         role=str(raw.get("role", "measure")),
         dtype=raw.get("dtype"),
         permissive=bool(raw.get("permissive", False)),
+        default_value=str(default_value) if default_value is not None else None,
     )
 
 
@@ -182,6 +200,11 @@ def _load_one(path: Path) -> CuratedDataset:
         search_keywords=tuple(raw.get("search_keywords") or ()),
         period_column=raw.get("period_column", "reporting_year"),
         download_url=str(download_url) if download_url else None,
+        industry_caveat=(
+            str(raw["industry_caveat"]).strip()
+            if raw.get("industry_caveat")
+            else None
+        ),
     )
 
 

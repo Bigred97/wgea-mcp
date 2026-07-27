@@ -306,7 +306,23 @@ def _apply_filters(
 
     Returns (filtered_df, did_you_mean_suggestions).
     """
-    if not filters:
+    # Inject implicit defaults for any dimension the caller omitted entirely
+    # but that carries a documented `default_value` (e.g. HEADLINE_GAP's
+    # `employer_size_band` defaults to 'all'). Without this, omitting the
+    # filter left every fine-grained fragment row unfiltered — combined with
+    # a normal `limit`/`max_rows`, that could silently push the genuine
+    # all-bands aggregate row out of the returned rows entirely.
+    effective_filters = dict(filters) if filters else {}
+    for col in cd.columns.values():
+        if (
+            col.role == "dimension"
+            and col.default_value is not None
+            and col.key not in effective_filters
+            and col.key in df.columns
+        ):
+            effective_filters[col.key] = col.default_value
+
+    if not effective_filters:
         return df, []
 
     valid_dim_keys = {
@@ -314,7 +330,7 @@ def _apply_filters(
     }
     out = df
     suggestions: list[str] = []
-    for user_key, user_val in filters.items():
+    for user_key, user_val in effective_filters.items():
         if user_key not in valid_dim_keys:
             valid = sorted(valid_dim_keys)
             suggestion = _fuzzy_filter_key_suggest(user_key, valid)
@@ -546,6 +562,41 @@ def records_to_series(records: list[Observation]) -> list[dict[str, Any]]:
     return list(groups.values())
 
 
+_NATIONAL_ANZSIC_LABEL = "all employers"
+
+
+def _industry_scoped_caveat(cd: CuratedDataset, filters: dict[str, Any]) -> str | None:
+    """Comparability caveat for a query scoped to a specific ANZSIC division.
+
+    Returns `cd.industry_caveat` when the caller filtered `anzsic_division`
+    to something other than the national "All employers" sentinel (in any
+    of its aliased forms — 'all', 'national', 'australia', ...), and None
+    otherwise (no `anzsic_division` filter, dataset has no configured
+    caveat, or the filter already resolves to the national row).
+
+    This is the response-body counterpart to the comparability prose that
+    previously only lived in describe()'s column description — a caller
+    who queries get_data/latest directly (and never calls describe()) now
+    sees the same warning on the data itself.
+    """
+    if not cd.industry_caveat or not filters or "anzsic_division" not in filters:
+        return None
+    raw_val = filters["anzsic_division"]
+    raw_list = raw_val if isinstance(raw_val, list) else [raw_val]
+    resolved: list[str] = []
+    for v in raw_list:
+        try:
+            resolved.append(translate_filter_value(cd, "anzsic_division", str(v).strip()))
+        except ValueError:
+            # Unresolvable value — _apply_filters will raise/empty-match on
+            # it separately; don't let that affect caveat computation.
+            resolved.append(str(v))
+    is_national_only = all(r.strip().lower() == _NATIONAL_ANZSIC_LABEL for r in resolved)
+    if is_national_only:
+        return None
+    return cd.industry_caveat
+
+
 def build_response(
     *,
     cd: CuratedDataset,
@@ -563,6 +614,7 @@ def build_response(
     max_rows: int | None = None,
 ) -> DataResponse:
     """Single entrypoint shaping uses to build a DataResponse."""
+    caveat = _industry_scoped_caveat(cd, filters or {})
     if df is None or df.empty:
         return DataResponse(
             dataset_id=cd.id,
@@ -576,6 +628,7 @@ def build_response(
             download_url=download_url,
             stale=stale,
             stale_reason=stale_reason,
+            caveat=caveat,
         )
     renamed = _apply_aliases(df, cd)
     coerced = _coerce_dtypes(renamed, cd)
@@ -640,4 +693,5 @@ def build_response(
         stale=stale,
         stale_reason=stale_reason,
         truncated_at=truncated_at,
+        caveat=caveat,
     )

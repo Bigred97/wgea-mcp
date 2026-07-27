@@ -5,6 +5,50 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.18] - 2026-07-27
+
+### Fixed
+- **HEADLINE_GAP `employer_size_band` did not default to 'all' as documented.**
+  The YAML column description promised "Defaults to 'all' (across all
+  bands)" when the filter was omitted, but `_apply_filters` only ever
+  filtered on keys present in the caller's `filters` dict — omitting
+  `employer_size_band` applied no filter on that column at all, so every
+  fine-grained per-band fragment row (`<250`, `250-499`, `500-999`,
+  `1000-4999`, `5000+`) came back alongside the genuine all-bands
+  aggregate row. Reproduced live against `api.ausdata.io/v1/data/wgea/
+  HEADLINE_GAP?anzsic_division=Mining&limit=6`: with a caller-realistic
+  `limit`, the response contained only the `1000-4999` fragment's 6
+  measures — the true all-bands aggregate was silently pushed out
+  entirely, no warning. Added `CuratedColumn.default_value` (wired from a
+  new optional `default_value:` YAML key) and inject it as an implicit
+  filter in `_apply_filters` for any dimension the caller omits entirely.
+  `employer_size_band` in `HEADLINE_GAP.yaml` now sets `default_value:
+  "all"`, so an omitted filter resolves to the single genuine
+  all-bands-aggregate row instead of every fragment.
+- **Industry-vs-national comparability warning existed only in describe()
+  prose, never in the `/v1/data` response body.** HEADLINE_GAP's
+  `employee_weighted_total_rem_gap_pct` column description explained that
+  per-`anzsic_division` figures use a different (industry-only
+  re-weighted) methodology and are NOT directly comparable to the
+  national "All employers" headline — but `get_data`/`latest` callers who
+  never call `describe_dataset` got no such warning on the data itself.
+  Added `DataResponse.caveat` (mirrors apra-mcp's `framework` advisory
+  field pattern) and a new optional `industry_caveat:` YAML key on
+  `CuratedDataset`. `build_response` now sets `caveat` to the configured
+  text whenever `anzsic_division` is filtered to anything other than
+  "All employers" (in any of its aliased forms), so a caller who never
+  reads the docs still sees the warning on the response they actually get.
+
+### Tests
+- `test_bug_regression.py`: added
+  `test_headline_gap_omitted_size_band_returns_all_bands_aggregate`
+  (industry-filtered query with no `employer_size_band` returns the
+  genuine all-bands row, not a narrow fragment — fails against the
+  pre-fix `_apply_filters` with 6+ fragment rows returned instead of 1)
+  and `test_headline_gap_industry_scope_carries_comparability_caveat`
+  (an `anzsic_division`-scoped response carries a non-empty
+  `DataResponse.caveat`; a national/`All employers` query carries none).
+
 ## [0.6.17] - 2026-07-27
 
 ### Fixed

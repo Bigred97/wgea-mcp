@@ -26,3 +26,4 @@ htmlcov/
 *.pyo
 *.swo
 ~/.wgea-mcp/
+graphify-out/
