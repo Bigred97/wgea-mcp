@@ -5,6 +5,59 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.16] - 2026-07-27
+
+### Fixed
+- `_expand_period_input`'s `end` bound branch was dead code: it returned the
+  same `"(YYYY-1)-YY"` expression as the `start` branch instead of the
+  documented `"YYYY-YY"`. A bare-year `end_period` (e.g. `"2024"`) silently
+  collapsed to `"2023-24"` and excluded the `"2024-25"` reporting year the
+  caller actually asked for. Implemented the end branch as documented
+  (`"YYYY"` → `"YYYY-YY"`).
+- `top_n`'s `reporting_year=` single-year slice relied on the old symmetric
+  (buggy) behaviour: it passed the same raw bare-year value through both the
+  start and end bound expansions to get one canonical label. With the end
+  branch now fixed, that would have widened a bare-year `reporting_year` into
+  a two-year range instead of one. Fixed by expanding the year once (via the
+  `end` bound, i.e. `"YYYY"` → `"YYYY-YY"`) into a single canonical
+  `"YYYY-YY"` label and using that same label for both bounds.
+- The first pass of this fix only reached the in-memory path
+  (`shaping._apply_period_range`) — the **streaming** path used by all four
+  `_STREAMING_DATASETS` (`WORKFORCE_COMPOSITION`, `EMPLOYEE_SUPPORT`,
+  `GENDER_EQUALITY_ACTIONS`, `WORKFORCE_MANAGEMENT`) never called
+  `_expand_period_input` at all: `server._build_row_predicate` compared the
+  raw caller-supplied `start_period`/`end_period` strings lexically against
+  the CSV cell, so `get_data("WORKFORCE_COMPOSITION", end_period="2024")`
+  still returned 0 rows (`"2024-25" > "2024"` lexically). Fixed by expanding
+  `start_period`/`end_period` through `_expand_period_input` (`bound="start"`
+  / `bound="end"`) inside `_build_row_predicate` itself, before the lexical
+  compare, so the streaming and in-memory paths agree. The expansion is
+  idempotent, so an already-expanded `"YYYY-YY"` value passing through both
+  `_build_row_predicate` and the later `shaping.build_response` call is
+  unaffected.
+
+### Tests
+- `test_shaping.py`: replaced the vacuous `row_count >= 0` assertion in
+  `test_period_filter_year_only` with real bound checks; added direct
+  `_expand_period_input` coverage for start/end divergence and `"YYYY-YY"`
+  passthrough; added a regression test proving `end_period="2024"` alone
+  now includes `"2024-25"` rows.
+- `test_top_n.py`: added `test_top_n_reporting_year_bare_year_filter`
+  asserting a bare-year `reporting_year="2024"` returns rows from exactly
+  one reporting year (`"2024-25"`), not zero and not a widened range.
+- `test_bug_regression.py`: added three tests that go through the public
+  `server.get_data()` tool (not `shaping.build_response` directly) against
+  `WORKFORCE_COMPOSITION`, one of the four `_STREAMING_DATASETS`, using the
+  existing `_make_streaming_fixture` harness — a prior round of tests
+  called `build_response` directly and passed despite the streaming
+  predicate being broken, since `build_response` never exercises it.
+  `test_streaming_end_period_bare_year_expands_to_reporting_year` proves
+  `end_period="2024"` now returns the `"2024-25"` fixture rows (verified
+  failing — 0 rows — against the pre-fix code); a start_period companion
+  test checks the documented semantics; a third confirms the predicate
+  still excludes genuinely out-of-range years (`end_period="2023"` → 0
+  rows).
+
 ## [0.6.15] - 2026-06-09
 
 ### Fixed

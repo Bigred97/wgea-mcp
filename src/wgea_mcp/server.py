@@ -45,7 +45,7 @@ from .parsing import (
     read_csv_from_zip,
     stream_csv_from_zip,
 )
-from .shaping import build_response
+from .shaping import _expand_period_input, build_response
 
 # Curated IDs are uppercase letters + digits + underscore.
 _DATASET_ID_PATTERN = re.compile(r"^[A-Z][A-Z0-9_]*$")
@@ -467,7 +467,19 @@ def _build_row_predicate(
     using lexical string compare against `period_column` (WGEA reporting-year
     labels sort correctly as strings). Returns None when there are no
     predicates to enforce (fastest path: just take the first max_rows rows).
+
+    `start_period` / `end_period` are expanded through `_expand_period_input`
+    here (bare "YYYY" -> "YYYY-YY" reporting-year label) so the streaming
+    lexical compare agrees with the in-memory `_apply_period_range` path in
+    shaping.py. An already-expanded "YYYY-YY" value passes through unchanged
+    (the expansion is idempotent), so this is safe even though shaping.py
+    re-expands the same values later when building the response.
     """
+    if start_period:
+        start_period = _expand_period_input(start_period, bound="start")
+    if end_period:
+        end_period = _expand_period_input(end_period, bound="end")
+
     # Translate each filter to a set of source-column accepted values.
     # The streaming parser sees raw string cell values, so we compare strings.
     expected: dict[str, set[str]] = {}
@@ -1250,11 +1262,19 @@ async def top_n(
     year_v = _validate_period(reporting_year, "reporting_year")
 
     # Pull all rows for the dataset (optionally filtered by reporting_year),
-    # then rank server-side. Setting both start and end to the same year is
-    # the WGEA-canonical way to slice to a single reporting year.
+    # then rank server-side. A bare "YYYY" input is expanded ONCE here (using
+    # the "end" expansion, i.e. "YYYY" -> "YYYY-YY") to the single canonical
+    # WGEA reporting-year label, then that same canonical label is used for
+    # both start and end bounds. Passing the already-canonical "YYYY-YY"
+    # string through apply_period_filter's start/end expansion is a
+    # passthrough regardless of bound, so this reliably slices to exactly
+    # one reporting year — unlike passing the raw year_v through separately
+    # for each bound, which (post start/end-asymmetry fix) would expand to
+    # two different reporting years and widen the range.
     if year_v is not None:
-        start_v: str | None = year_v
-        end_v: str | None = year_v
+        canonical_year = _expand_period_input(year_v, bound="end")
+        start_v: str | None = canonical_year
+        end_v: str | None = canonical_year
         latest_only_flag = False
     else:
         # Default: latest reporting year only (cheap-cache discovery path

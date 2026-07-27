@@ -448,7 +448,7 @@ def _expand_period_input(value: str, *, bound: str) -> str:
         year = int(s)
         if bound == "start":
             return f"{year - 1}-{str(year)[-2:]}"
-        return f"{year - 1}-{str(year)[-2:]}"
+        return f"{year}-{str(year + 1)[-2:]}"
     return s
 
 

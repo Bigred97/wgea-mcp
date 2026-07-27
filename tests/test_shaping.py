@@ -6,6 +6,7 @@ import pytest
 
 from wgea_mcp import curated, parsing
 from wgea_mcp.shaping import (
+    _expand_period_input,
     build_response,
     fuzzy_match_employer,
     records_to_csv,
@@ -293,8 +294,60 @@ def test_period_filter_year_only(workforce_df):
         fmt="records", user_query={},
         max_rows=5,
     )
-    # Should still match (the expand logic handles "2024" → "2023-24" start, "2024-25" end)
-    assert resp.row_count >= 0
+    # start_period="2024" -> "2023-24" (inclusive lower bound), end_period="2025"
+    # -> "2025-26" (inclusive upper bound). The fixture's "2024-25" rows fall
+    # inside that expanded range.
+    assert resp.row_count > 0
+    for r in resp.records:
+        assert r.reporting_year == "2024-25"
+
+
+def test_expand_period_input_start_bound_bare_year():
+    """Bare 'YYYY' expands to the PRIOR reporting year for a start bound."""
+    assert _expand_period_input("2024", bound="start") == "2023-24"
+
+
+def test_expand_period_input_end_bound_bare_year():
+    """Bare 'YYYY' expands to the reporting year STARTING that year for an
+    end bound — per the documented asymmetry. This is the branch that was
+    previously dead code (both branches returned the start-bound expansion)."""
+    assert _expand_period_input("2024", bound="end") == "2024-25"
+
+
+def test_expand_period_input_start_and_end_bounds_differ():
+    """Start and end bounds must diverge for a bare year — that's the whole
+    point of the documented asymmetry; a regression back to the old bug
+    would make these equal again."""
+    assert _expand_period_input("2024", bound="start") != _expand_period_input(
+        "2024", bound="end"
+    )
+
+
+def test_expand_period_input_passthrough_canonical_label():
+    """An already-canonical 'YYYY-YY' label passes through unchanged
+    regardless of bound."""
+    assert _expand_period_input("2024-25", bound="start") == "2024-25"
+    assert _expand_period_input("2024-25", bound="end") == "2024-25"
+
+
+def test_period_filter_end_bound_bare_year_includes_current_reporting_year(
+    workforce_df,
+):
+    """Regression test: end_period='2024' alone must NOT exclude the '2024-25'
+    reporting year. Under the old (buggy) symmetric expansion, end_period
+    expanded to '2023-24' and this query silently returned zero rows even
+    though the caller asked for everything up to and including 2024."""
+    cd = curated.get("WORKFORCE_COMPOSITION")
+    resp = build_response(
+        cd=cd, df=workforce_df,
+        filters={}, measures=None,
+        start_period=None, end_period="2024",
+        fmt="records", user_query={},
+        max_rows=5,
+    )
+    assert resp.row_count > 0
+    for r in resp.records:
+        assert r.reporting_year == "2024-25"
 
 
 def test_data_response_period_populated_alongside_reporting_year(workforce_df):

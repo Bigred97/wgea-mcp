@@ -104,6 +104,25 @@ async def test_top_n_reporting_year_filter(mocked_data):
 
 
 @pytest.mark.asyncio
+async def test_top_n_reporting_year_bare_year_filter(mocked_data):
+    """A bare 'YYYY' reporting_year restricts to the single reporting year
+    starting in that year ('2024' -> '2024-25'), not a widened range.
+
+    Regression test for the _expand_period_input start/end asymmetry fix:
+    the fixture is the 2024-25 release, so reporting_year='2024' must return
+    exactly those rows (and only that one reporting year), never zero rows
+    and never a range spanning multiple reporting years.
+    """
+    r = await server.top_n(
+        "WORKFORCE_COMPOSITION", "n_employees", n=5,
+        reporting_year="2024",
+    )
+    assert r.row_count > 0
+    years = {rec.reporting_year for rec in r.records}
+    assert years == {"2024-25"}
+
+
+@pytest.mark.asyncio
 async def test_top_n_envelope_preserved(mocked_data):
     """Trust-contract fields survive the rank-and-slice transformation."""
     r = await server.top_n("WORKFORCE_COMPOSITION", "n_employees", n=3)

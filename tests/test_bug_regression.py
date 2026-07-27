@@ -541,3 +541,89 @@ async def test_streaming_with_fuzzy_filter_falls_back_to_full_parse(monkeypatch)
         assert resp.row_count >= 0
     finally:
         await server.reset_client_for_tests()
+
+
+# -------------------------------------------------------------------------
+# Bug 9: `_build_row_predicate` (used by the STREAMING path only — see the
+# four `_STREAMING_DATASETS`) compared raw, un-expanded caller period
+# strings lexically against the CSV cell. A bare year like end_period=
+# "2024" was never expanded to the WGEA reporting-year label "2024-25", so
+# `"2024-25" > "2024"` (lexical) rejected every single row — get_data()
+# silently returned 0 rows for the single most natural query shape ("give
+# me 2024"). The in-memory path (shaping._apply_period_range) already
+# expanded correctly via `_expand_period_input`; the streaming path did
+# not, so the two paths disagreed. Fixed by expanding start_period /
+# end_period through `_expand_period_input` inside `_build_row_predicate`
+# itself, before the lexical compare.
+#
+# This test goes through the public `server.get_data()` tool (not
+# `shaping.build_response` directly) against WORKFORCE_COMPOSITION, one of
+# the four `_STREAMING_DATASETS` — a prior round of tests called
+# build_response directly and passed despite the streaming path being
+# broken, because build_response never exercises the streaming predicate.
+# -------------------------------------------------------------------------
+async def test_streaming_end_period_bare_year_expands_to_reporting_year(monkeypatch):
+    """get_data('WORKFORCE_COMPOSITION', end_period='2024') must match the
+    2024-25 reporting-year rows in the streaming fixture, not reject them.
+    """
+    from wgea_mcp import server
+
+    _make_streaming_fixture(monkeypatch)
+    try:
+        resp = await server.get_data(
+            "WORKFORCE_COMPOSITION", end_period="2024", max_rows=2000
+        )
+        assert resp.row_count > 0, (
+            "end_period='2024' returned 0 rows via the streaming path — "
+            "bare-year end_period must expand to the '2024-25' reporting-"
+            "year label before the streaming row predicate compares it "
+            "against the CSV cell."
+        )
+        years = {r.reporting_year for r in resp.records}
+        assert years == {"2024-25"}, f"expected only 2024-25 rows, got {years}"
+    finally:
+        await server.reset_client_for_tests()
+
+
+async def test_streaming_start_period_bare_year_matches_documented_semantics(
+    monkeypatch,
+):
+    """start_period='2024' expands to the start bound '2023-24' (per
+    _expand_period_input's documented semantics), so a fixture entirely in
+    reporting year 2024-25 ("2024-25" >= "2023-24") must still match.
+    """
+    from wgea_mcp import server
+
+    _make_streaming_fixture(monkeypatch)
+    try:
+        resp = await server.get_data(
+            "WORKFORCE_COMPOSITION", start_period="2024", max_rows=2000
+        )
+        assert resp.row_count > 0, (
+            "start_period='2024' (-> start bound '2023-24') must still "
+            "include 2024-25 fixture rows via the streaming path"
+        )
+        years = {r.reporting_year for r in resp.records}
+        assert years == {"2024-25"}, f"expected only 2024-25 rows, got {years}"
+    finally:
+        await server.reset_client_for_tests()
+
+
+async def test_streaming_end_period_excludes_out_of_range_year(monkeypatch):
+    """Sanity check that the streaming predicate still rejects rows, not
+    just pass everything through: end_period='2023' expands to the end
+    bound '2023-24', which excludes the fixture's 2024-25 rows entirely.
+    """
+    from wgea_mcp import server
+
+    _make_streaming_fixture(monkeypatch)
+    try:
+        resp = await server.get_data(
+            "WORKFORCE_COMPOSITION", end_period="2023", max_rows=2000
+        )
+        assert resp.row_count == 0, (
+            f"end_period='2023' (-> end bound '2023-24') should exclude all "
+            f"2024-25 fixture rows, got {resp.row_count}"
+        )
+    finally:
+        await server.reset_client_for_tests()
