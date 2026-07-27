@@ -5,6 +5,38 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.17] - 2026-07-27
+
+### Fixed
+- `filters` on `get_data`, `latest`, and `top_n` was typed
+  `Annotated[dict[str, Any] | None, Field(...)]`. FastMCP validates an
+  incoming MCP tool argument against that strict dict-only Pydantic type
+  *before* the function body runs, so a JSON-encoded string `filters`
+  argument — exactly what a real MCP client sends when it serializes a
+  dict-shaped parameter to text — was rejected with a raw Pydantic
+  `dict_type` error. The existing `_validate_filters()` helper already
+  handled `json.loads()`-ing a string with a clear "Try X" hint, but it was
+  dead code for any client sending `filters` as text: the string never
+  reached the function body. Widened the annotation to
+  `dict[str, Any] | str | None` on all three tools so FastMCP's schema
+  validation lets a JSON string through to `_validate_filters()`, which was
+  already called unconditionally as the first thing done with `filters`
+  inside `_get_data_impl` (used by all three tools). Reproduced live via
+  real MCP tool calls on abs-mcp's `get_data`/`latest`/`top_n`; confirmed
+  the identical pattern here by grep.
+
+### Tests
+- `test_filters_mcp_transport.py` (new): uses FastMCP's in-process
+  `fastmcp.Client` to round-trip tool calls through the real MCP
+  JSON-RPC argument-validation path (not the direct-async-call pattern the
+  rest of the suite uses, which bypasses Pydantic validation and is why
+  this bug shipped undetected). Asserts `get_data`, `latest`, and `top_n`
+  all accept a JSON-encoded string `filters` argument and that a malformed
+  JSON string still surfaces `_validate_filters()`'s own error message
+  rather than a raw Pydantic `dict_type` error. Verified failing (`dict_type`
+  Pydantic error, all 4 tests) against the pre-fix annotation before
+  applying the type-widen edit.
+
 ## [0.6.16] - 2026-07-27
 
 ### Fixed
