@@ -191,3 +191,100 @@ async def test_top_n_rejects_uncurated_dataset():
     """Non-curated dataset_id → ValueError with the unknown-dataset hint."""
     with pytest.raises(ValueError, match="not a curated"):
         await server.top_n("RANDOM_RAW_ID", "n_employees", n=5)
+
+
+# ---------------------------------------------------------------------------
+# 0.6.19: rank full population before the row ceiling
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_top_n_ranks_rows_past_where_a_prefix_cap_would_cut(
+    mocked_data, monkeypatch
+):
+    """True leaders living past a file-order prefix must still win.
+
+    Simulates the old bug: a HARD_MAX-sized prefix in file order would only
+    see small early values; the real maxima sit at the end of the frame.
+    for_ranking + full-parse must surface those maxima.
+    """
+    import pandas as pd
+    from wgea_mcp.parsing import read_csv_from_zip
+
+    sample = read_csv_from_zip(SAMPLE_ZIP.read_bytes(), "wgea_workforce_composition_")
+    template = sample.iloc[0:1].copy()
+    # Tiny synthetic ceiling so we do not need 10k fixture rows.
+    fake_ceiling = 8
+    monkeypatch.setattr(server, "_HARD_MAX_ROWS", fake_ceiling)
+
+    rows = []
+    for i in range(fake_ceiling + 5):
+        row = template.iloc[0].copy()
+        row["employer_name"] = f"Employer_{i:03d}"
+        row["employer_abn"] = f"{10000000000 + i}"
+        # Early (prefix) rows are tiny; the true leaders are past the ceiling.
+        row["n_employees"] = 1 if i < fake_ceiling else 10_000 + i
+        rows.append(row)
+    big = pd.DataFrame(rows)
+
+    async def _fake_full(cd):
+        return big, "https://example.invalid/wgea_test.zip", "2024-25", False, None
+
+    async def _streaming_must_not_run(*a, **kw):
+        raise AssertionError(
+            "top_n for_ranking must use full-parse, not the streaming prefix cap"
+        )
+
+    monkeypatch.setattr(server, "_fetch_and_parse", _fake_full)
+    monkeypatch.setattr(server, "_fetch_and_parse_streaming", _streaming_must_not_run)
+    server.reset_df_cache_for_tests()
+
+    r = await server.top_n("WORKFORCE_COMPOSITION", "n_employees", n=3)
+    values = [rec.value for rec in r.records]
+    assert values == sorted(values, reverse=True)
+    assert values[0] >= 10_000 + fake_ceiling
+    assert all(v >= 10_000 for v in values), (
+        f"expected only post-ceiling leaders, got {values}"
+    )
+    assert r.truncated_at is None
+    if r.caveat:
+        assert "first" not in r.caveat and "not the full population" not in r.caveat
+
+
+def test_build_response_ranks_before_max_rows_file_order_cap():
+    """Direct shaping unit: rank_by beats a file-order max_rows prefix."""
+    import pandas as pd
+    from wgea_mcp import curated
+    from wgea_mcp.parsing import read_csv_from_zip
+    from wgea_mcp.shaping import build_response
+
+    sample = read_csv_from_zip(SAMPLE_ZIP.read_bytes(), "wgea_workforce_composition_")
+    template = sample.iloc[0:1].copy()
+    rows = []
+    for i in range(12):
+        row = template.iloc[0].copy()
+        row["employer_name"] = f"RankCo_{i:02d}"
+        row["employer_abn"] = f"{20000000000 + i}"
+        row["n_employees"] = i + 1  # file order ascending; true top is at the end
+        rows.append(row)
+    df = pd.DataFrame(rows)
+    cd = curated.get("WORKFORCE_COMPOSITION")
+
+    # File-order cap alone would return the smallest values.
+    capped = build_response(
+        cd=cd, df=df, filters={}, measures="n_employees",
+        start_period=None, end_period=None, fmt="records", user_query={},
+        max_rows=3,
+    )
+    assert [rec.value for rec in capped.records] == [1, 2, 3]
+    assert capped.truncated_at == 12
+
+    # Rank-before-cap returns the true top-3 and does not set truncated_at.
+    ranked = build_response(
+        cd=cd, df=df, filters={}, measures="n_employees",
+        start_period=None, end_period=None, fmt="records", user_query={},
+        max_rows=3,  # ignored when rank_* is set
+        rank_by="n_employees", rank_n=3, rank_descending=True,
+    )
+    assert [rec.value for rec in ranked.records] == [12, 11, 10]
+    assert ranked.truncated_at is None

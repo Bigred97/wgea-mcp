@@ -25,7 +25,7 @@ import pandas as pd
 from fastmcp import FastMCP
 from pydantic import Field
 
-from . import catalog, curated, parquet_cache
+from . import __version__, catalog, curated, parquet_cache
 from .client import (
     WGEAAPIError,
     WGEAClient,
@@ -57,7 +57,7 @@ _VALID_FORMATS = {"records", "series", "csv"}
 _DEFAULT_MAX_ROWS = 2000
 _HARD_MAX_ROWS = 10_000
 
-mcp = FastMCP("wgea-mcp")
+mcp = FastMCP("wgea-mcp", version=__version__)
 
 _client: WGEAClient | None = None
 _client_lock = asyncio.Lock()
@@ -762,6 +762,11 @@ async def _get_data_impl(
     max_rows: int | None = None,
     measures: Any = None,
     latest_only: bool = False,
+    *,
+    for_ranking: bool = False,
+    rank_by: str | None = None,
+    rank_n: int | None = None,
+    rank_descending: bool = True,
 ) -> DataResponse:
     # Reset the per-context stale signal at the top of every tool invocation
     # so a previous fetch's flag can't leak into this response. Mirrors the
@@ -803,7 +808,11 @@ async def _get_data_impl(
             "'YYYY' (e.g. '2024')."
         )
 
-    if max_rows is not None:
+    # top_n ranks the full filtered population before any row ceiling, so
+    # skip the get_data/latest max_rows default when for_ranking=True.
+    if for_ranking:
+        effective_max = None
+    elif max_rows is not None:
         if isinstance(max_rows, bool) or not isinstance(max_rows, int):
             raise ValueError(
                 f"max_rows must be a positive integer (1-{_HARD_MAX_ROWS}), "
@@ -846,7 +855,8 @@ async def _get_data_impl(
         # latest_only is a no-op — every row already matches the resolved
         # year. Skip the slice rather than triggering an unnecessary scan.
     elif (
-        cd.id in _STREAMING_DATASETS
+        not for_ranking
+        and cd.id in _STREAMING_DATASETS
         and _can_pushdown_filters(cd, filters_d)
     ):
         df, url_used, year_label, stale, stale_reason = (
@@ -880,6 +890,9 @@ async def _get_data_impl(
         stale=stale,
         stale_reason=stale_reason,
         max_rows=effective_max,
+        rank_by=rank_by if for_ranking else None,
+        rank_n=rank_n if for_ranking else None,
+        rank_descending=rank_descending,
     )
     # Merge in the HTTP-level stale signal (set by WGEAClient when it served
     # a cached payload past its TTL because data.gov.au was unreachable).
@@ -1283,27 +1296,26 @@ async def top_n(
         end_v = None
         latest_only_flag = True
 
-    full = await _get_data_impl(
+    # 0.6.19: rank the FULL filtered population before any row ceiling.
+    # Previously top_n fetched via _get_data_impl(max_rows=_HARD_MAX_ROWS),
+    # which on streaming datasets (WORKFORCE_COMPOSITION ~210k rows/year)
+    # short-circuited after the first 10k matching rows in file order — so
+    # the "top N" could miss the true leaders. for_ranking forces the
+    # full-parse path and sorts in DataFrame space before shaping.
+    return await _get_data_impl(
         norm_id,
         filters,
         start_v,
         end_v,
         "records",
-        max_rows=_HARD_MAX_ROWS,
+        max_rows=None,
         measures=measure_key,
         latest_only=latest_only_flag,
+        for_ranking=True,
+        rank_by=measure_key,
+        rank_n=n,
+        rank_descending=(direction == "top"),
     )
-    valid_records = [
-        r for r in full.records
-        if getattr(r, "value", None) is not None
-    ]
-    valid_records.sort(
-        key=lambda r: r.value,  # type: ignore[union-attr,return-value]
-        reverse=(direction == "top"),
-    )
-    top = valid_records[:n]
-    # Preserve the response envelope; replace records and row_count.
-    return full.model_copy(update={"records": top, "row_count": len(top)})
 
 
 @mcp.tool

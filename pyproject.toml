@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "wgea-mcp"
-version = "0.6.18"
+version = "0.6.19"
 description = "MCP server for the Workplace Gender Equality Agency (WGEA) public data file. Plain-English access to per-employer workforce composition, gender-equality policy answers, parental leave, flexible work, and harm-prevention data — every WGEA-reporting employer in Australia, every year, with fuzzy employer-name search and a CC-BY 3.0 AU attribution contract."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -72,6 +72,15 @@ pythonpath = ["src"]
 
 [tool.ruff]
 line-length = 100
+
+[tool.ruff.lint]
+# Pinned to the classic ruff default rule set. CI runs `uvx "ruff>=0.5"`, i.e.
+# always the newest ruff, and a 2026 release widened the DEFAULT selection
+# (BLE001, TRY004, S110, PYI, PERF, FURB, ...) so the lint job went red on
+# an unchanged tree (2026-08-16 onward). An explicit select keeps the gate
+# stable regardless of the ruff version; widen it deliberately, not by
+# upgrade. (asic-mcp pins its own explicit list and stayed green.)
+select = ["E4", "E7", "E9", "F"]
 
 [tool.ruff.lint.per-file-ignores]
 # E402 — tests/test_parsing.py uses deliberate mid-file imports below

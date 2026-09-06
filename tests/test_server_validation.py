@@ -292,3 +292,56 @@ def test_no_mcp_tool_refs_in_error_strings():
         "Replace with transport-agnostic hints (e.g. 'See the valid-options list "
         f"for X').\n  {chr(10).join(offenders)}"
     )
+
+
+# ---------- server construction: FastMCP version must be the package's own ----------
+#
+# Regression guard: FastMCP(name=...) without an explicit version= kwarg
+# silently defaults `.version` to fastmcp's OWN library version (e.g.
+# "3.2.4") — which then leaks into serverInfo.version at the MCP initialize
+# handshake, mismatching the server_version field every DataResponse
+# already reports via importlib.metadata.
+
+def test_mcp_server_version_matches_package_version():
+    from importlib.metadata import version as _pkg_version
+
+    assert server.mcp.version == _pkg_version("wgea-mcp")
+
+
+# ---------- 0.6.19 review fixes ----------
+
+@pytest.mark.asyncio
+async def test_top_n_passes_for_ranking_not_hard_max_rows(monkeypatch):
+    """top_n must ask _get_data_impl to rank the full population (for_ranking),
+    not fetch a HARD_MAX_ROWS-capped prefix then sort that prefix."""
+    captured: dict = {}
+
+    async def _impl(*a, **kw):
+        captured["args"] = a
+        captured["kwargs"] = kw
+        from wgea_mcp.models import DataResponse, Observation
+        return DataResponse.model_construct(
+            dataset_id="WORKFORCE_COMPOSITION",
+            records=[
+                Observation(
+                    reporting_year="2024-25", period="2024-25",
+                    value=99.0, measure="n_employees",
+                    dimensions={"employer_name": "Big Co"}, unit="employees",
+                )
+            ],
+            row_count=1,
+            truncated_at=None,
+            caveat=None,
+        )
+
+    monkeypatch.setattr(server, "_get_data_impl", _impl)
+    resp = await server.top_n("WORKFORCE_COMPOSITION", "n_employees", n=5)
+    assert captured["kwargs"].get("for_ranking") is True
+    assert captured["kwargs"].get("rank_by") == "n_employees"
+    assert captured["kwargs"].get("rank_n") == 5
+    assert captured["kwargs"].get("rank_descending") is True
+    # Must not reintroduce the pre-fix ceiling-bounded fetch.
+    assert captured["kwargs"].get("max_rows") is None
+    assert resp.row_count == 1
+    assert resp.truncated_at is None
+

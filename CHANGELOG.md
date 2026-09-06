@@ -1,9 +1,36 @@
 # Changelog
 
-All notable changes to this project will be documented in this file.
+## 0.6.19 (2026-09-06) — top_n ranks the full population before the row ceiling; wildcard hint; real serverInfo version
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+### Fixed
+
+- `top_n()` on a population larger than the 10,000-row streaming ceiling (WORKFORCE_COMPOSITION
+  is ~210k rows/year, read in file order) used to fetch a file-order prefix via
+  `_get_data_impl(max_rows=10_000)` and then sort that prefix — so the "top N" could miss
+  the true leaders. It now forces the full-parse path (`for_ranking=True`) and sorts the
+  filtered DataFrame by the measure *before* shaping/slicing to `n`. `truncated_at` is not
+  set for this intentional N-slice. (An interim caveat for ceiling-bounded rankings is
+  no longer needed on the happy path.)
+- The "wildcard value reduced to empty" ValueError now carries an example ("commonwealth*").
+- `FastMCP("wgea-mcp")` was constructed without `version=`, so the MCP initialize
+  handshake advertised fastmcp's own library version in `serverInfo.version`
+  while every `DataResponse.server_version` carried the real package version.
+  Now `FastMCP("wgea-mcp", version=__version__)`;
+  `test_mcp_server_version_matches_package_version` pins it.
+- CI lint: `[tool.ruff.lint] select` pinned to the classic default rule set. The `test.yml`
+  job runs `uvx "ruff>=0.5"` (newest ruff) and a 2026 ruff release widened the default
+  selection (BLE001, TRY004, S110, PYI, PERF, FURB, ...), which turned the lint job red on
+  an unchanged tree from 2026-08-16. No code changed; the gate is stable again.
+
+### Tests
+
+- `test_top_n_ranks_rows_past_where_a_prefix_cap_would_cut`: synthetic population with
+  true leaders past a tiny fake ceiling; asserts full-parse ranking wins and streaming
+  is not used.
+- `test_build_response_ranks_before_max_rows_file_order_cap`: file-order `max_rows=3`
+  returns 1..3; `rank_by`/`rank_n` returns 12..10 and clears `truncated_at`.
+- `test_top_n_passes_for_ranking_not_hard_max_rows`: top_n calls `_get_data_impl` with
+  `for_ranking=True` and `max_rows=None` (replaces the interim ceiling-caveat unit).
 
 ## [0.6.18] - 2026-07-27
 

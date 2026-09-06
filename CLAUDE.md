@@ -1,3 +1,9 @@
+> Sister MCP in the Australian Public Data stack. Shared conventions live in
+> `../CLAUDE.md` (not auto-loaded from here — read it); releases via the
+> `sister-release` skill. THIS repo deliberately diverges from the shared
+> boilerplate (custom tool signatures / release trigger), so this file keeps
+> its full content. [pointer added 2026-08-20]
+
 # wgea-mcp
 
 Sister MCP in the Australian Public Data stack. See `../CLAUDE.md` for

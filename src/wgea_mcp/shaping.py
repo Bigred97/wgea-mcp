@@ -399,7 +399,8 @@ def _apply_filters(
                 needle = v_str.replace("*", "").replace("~", "").strip()
                 if not needle:
                     raise ValueError(
-                        f"Filter {user_key!r}: wildcard value reduced to empty after stripping '*'."
+                        f"Filter {user_key!r}: wildcard value reduced to empty after stripping '*'. "
+                        "Try a wildcard with text in it, like 'commonwealth*' or '*bank*'."
                     )
                 mask = (
                     out[user_key]
@@ -615,8 +616,17 @@ def build_response(
     stale: bool = False,
     stale_reason: str | None = None,
     max_rows: int | None = None,
+    rank_by: str | None = None,
+    rank_n: int | None = None,
+    rank_descending: bool = True,
 ) -> DataResponse:
-    """Single entrypoint shaping uses to build a DataResponse."""
+    """Single entrypoint shaping uses to build a DataResponse.
+
+    When ``rank_by`` + ``rank_n`` are set (the ``top_n`` path), the filtered
+    population is sorted by that measure and sliced to ``rank_n`` *before*
+    any ``max_rows`` cap. That is the honesty fix for ranking a full
+    population that would otherwise be truncated at the streaming ceiling.
+    """
     caveat = _industry_scoped_caveat(cd, filters or {})
     if df is None or df.empty:
         return DataResponse(
@@ -647,7 +657,21 @@ def build_response(
     # filters. None means "no truncation happened".
     pre_truncation_rows = len(period_filtered)
     truncated_at: int | None = None
-    if max_rows is not None and max_rows > 0 and pre_truncation_rows > max_rows:
+    # Rank-then-slice (top_n): sort the FULL filtered population by measure
+    # before any row ceiling. Intentional N-slice is not a silent truncation,
+    # so truncated_at stays None.
+    if rank_by is not None and rank_n is not None and rank_n > 0:
+        if rank_by not in period_filtered.columns or period_filtered.empty:
+            period_filtered = period_filtered.iloc[0:0].reset_index(drop=True)
+        else:
+            ranked = period_filtered.dropna(subset=[rank_by])
+            ranked = ranked.sort_values(
+                by=rank_by,
+                ascending=not rank_descending,
+                kind="mergesort",
+            )
+            period_filtered = ranked.iloc[:rank_n].reset_index(drop=True)
+    elif max_rows is not None and max_rows > 0 and pre_truncation_rows > max_rows:
         period_filtered = period_filtered.iloc[:max_rows].reset_index(drop=True)
         truncated_at = pre_truncation_rows
 
